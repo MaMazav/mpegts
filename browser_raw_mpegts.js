@@ -7,7 +7,7 @@
 	// preconfiguration using <script>'s data-attributes values
 	var scripts = document.getElementsByTagName('script'),
 		script = scripts[scripts.length - 1],
-		worker = new Worker('worker.js'),
+		worker = new Worker('worker_raw_mpegts.js'),
 		nextIndex = 0,
 		sentVideos = 0,
 		currentVideo = null,
@@ -48,7 +48,7 @@
 				var video = document.createElement('video'), source = document.createElement('source');
 				source.type = 'video/mp4';
 				video.appendChild(source);
-
+                
 				video.addEventListener('loadedmetadata', function () {
 					if (canvas.width !== this.videoWidth || canvas.height !== this.videoHeight) {
 						canvas.width = this.width = this.videoWidth;
@@ -106,21 +106,23 @@
 	// loading more segments from reciever
 	function getMore() {
         
-        setTimeout(function() {
+        //setTimeout(function() {
         
-        var suffix = new Uint8Array(188 + 4);
-        suffix[0] = 0x47;
-        suffix[1] = 0;
-        suffix[2] = 0;
-        for (var i = 3; i < 188; ++i) {
-            suffix[i] = i;
-        }
-        suffix[188] = 0x47;
-        suffix[189] = 13;
-        suffix[190] = 0;
-        suffix[191] = 24;
+        //var suffix = new Uint8Array(188 + 4);
+        //suffix[0] = 0x47;
+        //suffix[1] = 0;
+        //suffix[2] = 0;
+        //for (var i = 3; i < 188; ++i) {
+        //    suffix[i] = i;
+        //}
+        //suffix[188] = 0x47;
+        //suffix[189] = 13;
+        //suffix[190] = 0;
+        //suffix[191] = 24;
         
-        segmenter.pushData(suffix);
+        //segmenter.pushData(suffix);
+        
+        console.log('Asking for another segment');
         
         segmenter.getSegment(function getSegmentCallback(segmentBlob) {
             worker.postMessage([{
@@ -131,6 +133,6 @@
             console.log('Sent segment to decoder');
         });
         
-        }, 15000);
+        //}, 15000);
     }
 })();

@@ -14,8 +14,23 @@
 }(this, function (jDataView, jBinary, MP4, H264, PES, ADTS) {
 	'use strict';
 
-	return function (mpegts) {
+	return function (mpegts, liveStreamContext) {
+        if (liveStreamContext) {
+            jBinary.hookPat = liveStreamContext.pat;
+            jBinary.hookPmt = liveStreamContext.pmt;
+        }
+        
 		var packets = mpegts.read('File');
+        
+        if (liveStreamContext) {
+            delete jBinary.hookPat;
+            delete jBinary.hookPmt;
+            liveStreamContext.pat = packets.pat;
+            liveStreamContext.pmt = packets.pmt;
+        }
+        
+        var isLiveStream = !!liveStreamContext;
+        var videoInfo = liveStreamContext || {};
 		
 		// extracting and concatenating raw stream parts
 		var stream = new jDataView(mpegts.view.byteLength);
@@ -53,22 +68,22 @@
 					var nalUnit = nalStream.read('NALUnit');
 					switch (nalUnit[0] & 0x1F) {
 						case 7:
-							if (!sps) {
-								var sps = nalUnit;
-								var spsInfo = new jBinary(sps, H264).read('SPS');
-								var width = (spsInfo.pic_width_in_mbs_minus_1 + 1) * 16;
-								var height = (2 - spsInfo.frame_mbs_only_flag) * (spsInfo.pic_height_in_map_units_minus_1 + 1) * 16;
-								var cropping = spsInfo.frame_cropping;
+							if (!videoInfo.spsInfo) {
+								videoInfo.sps = nalUnit;
+								videoInfo.spsInfo = new jBinary(videoInfo.sps, H264).read('SPS');
+								videoInfo.width = (videoInfo.spsInfo.pic_width_in_mbs_minus_1 + 1) * 16;
+								videoInfo.height = (2 - videoInfo.spsInfo.frame_mbs_only_flag) * (videoInfo.spsInfo.pic_height_in_map_units_minus_1 + 1) * 16;
+								var cropping = videoInfo.spsInfo.frame_cropping;
 								if (cropping) {
-									width -= 2 * (cropping.left + cropping.right);
-									height -= 2 * (cropping.top + cropping.bottom);
+									videoInfo.width -= 2 * (cropping.left + cropping.right);
+									videoInfo.height -= 2 * (cropping.top + cropping.bottom);
 								}
 							}
 							break;
 
 						case 8:
-							if (!pps) {
-								var pps = nalUnit;
+							if (!videoInfo.pps) {
+								videoInfo.pps = nalUnit;
 							}
 							break;
 
@@ -182,8 +197,8 @@
 						u: 0, v: 0, w: 1
 					},
 					dimensions: {
-						horz: width,
-						vert: height
+						horz: videoInfo.width,
+						vert: videoInfo.height
 					}
 				}],
 				mdia: [{
@@ -232,8 +247,8 @@
 												type: 'avc1',
 												data_reference_index: 1,
 												dimensions: {
-													horz: width,
-													vert: height
+													horz: videoInfo.width,
+													vert: videoInfo.height
 												},
 												resolution: {
 													horz: 72,
@@ -245,12 +260,12 @@
 												atoms: {
 													avcC: [{
 														version: 1,
-														profileIndication: spsInfo.profile_idc,
-														profileCompatibility: parseInt(spsInfo.constraint_set_flags.join(''), 2),
-														levelIndication: spsInfo.level_idc,
+														profileIndication: videoInfo.spsInfo.profile_idc,
+														profileCompatibility: parseInt(videoInfo.spsInfo.constraint_set_flags.join(''), 2),
+														levelIndication: videoInfo.spsInfo.level_idc,
 														lengthSizeMinusOne: 3,
-														seqParamSets: [sps],
-														pictParamSets: [pps]
+														seqParamSets: [videoInfo.sps],
+														pictParamSets: [videoInfo.pps]
 													}]
 												}
 											}]
@@ -457,9 +472,6 @@
 				minor_version: 512,
 				compatible_brands: ['isom', 'iso2', 'avc1', 'mp41']
 			}],
-			mdat: [{
-				_rawData: stream.getBytes(stream.tell(), 0)
-			}],
 			moov: [{
 				atoms: {
 					mvhd: [{
@@ -480,6 +492,9 @@
 					}],
 					trak: trak
 				}
+			}],
+			mdat: [{
+				_rawData: stream.getBytes(stream.tell(), 0)
 			}]
 		});
 		

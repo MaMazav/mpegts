@@ -205,11 +205,14 @@
 		File: jBinary.Template({
 			baseType: ['array', 'Packet'],
 			read: function () {
-				this.pat = {};
-				this.pmt = {};
+				this.pat = jBinary.hookPat || {};
+				this.pmt = jBinary.hookPmt || {};
 				var self = this;
 				return this.binary.inContext(this, function () {
-					return self.baseRead();
+					var result = self.baseRead();
+                    result.pat = self.pat;
+                    result.pmt = self.pmt;
+                    return result;
 				});
 			},
 			write: function (packets) {
