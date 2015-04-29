@@ -57,11 +57,20 @@ function testSegmenter(testName, actions) {
                 //var buffer = reader.readAsArrayBuffer(calledCallbacks[i].segment);
                 //var segmentActual = new Uint8Array(buffer);
                 var segmentActual = concatBuffers(calledCallbacks[i].segment);
+
+		var lengthDescription;
+		if (segmentActual.length === segmentExpected.length) {
+			lengthDescription = segmentExpected.length + ' bytes';
+		} else {
+			lengthDescription =
+				'expected ' + segmentExpected.length + ' bytes' +
+				', actual ' + segmentActual.length + ' bytes';
+		}
                 
                 assert.deepEqual(
                     segmentActual,
                     segmentExpected,
-                    'Callback argument correctness (' + segmentExpected.length + ' bytes)');
+                    'Callback argument correctness (' + lengthDescription + ')');
             }
             
             offset += action.expectedSegmentLength;
@@ -127,17 +136,9 @@ function blobToUint8Array(b) {
     return ui8;
 }
 
-var simplePacketSStartValue = 0;
-
-function simplePacket(length, pid, startValue) {
-    var result = new Uint8Array(length);
-    
-    result[0] = 0x47;
-    result[1] = pid >> 8;
-    result[2] = pid & 0xFF;
-    
+function generateArrayContent(result, startOffset, startValue) {
     var value = startValue;
-    for (var i = 3; i < length; ++i) {
+    for (var i = startOffset; i < result.length; ++i) {
         value += 3;
         value %= 255;
         
@@ -147,7 +148,23 @@ function simplePacket(length, pid, startValue) {
         
         result[i] = value;
     }
+}
     
+function simplePacket(length, pid, startValue) {
+    var result = new Uint8Array(length);
+    result[0] = 0x47;
+    result[1] = pid >> 8;
+    result[2] = pid & 0xFF;
+    
+    generateArrayContent(result, 3, startValue);
+    
+    return result;
+}
+
+function simpleContent(length, startValue) {
+    var result = new Uint8Array(length);
+    generateArrayContent(result, 0, startValue);
+
     return result;
 }
 
@@ -158,7 +175,7 @@ testSegmenter('Simple packets', [
         simplePacket(188, 0, 61),
         simplePacket(188, 13, 4),
     ] },
-    { type: 'get', 'expectedSegmentLength': 188 * 2 }
+    { type: 'get', expectedSegmentLength: 188 * 2 }
     ]);
 
 testSegmenter('Simple packets one by one', [
@@ -166,7 +183,18 @@ testSegmenter('Simple packets one by one', [
     { type: 'push', data: [ simplePacket(188, 9, 13) ] },
     { type: 'push', data: [ simplePacket(188, 0, 61) ] },
     { type: 'push', data: [ simplePacket(188, 13, 4) ] },
-    { type: 'get', 'expectedSegmentLength': 188 * 2 }
+    { type: 'get', expectedSegmentLength: 188 * 2 }
+    ]);
+    
+testSegmenter('Two simple getData calls', [
+    { type: 'push', data: [ simplePacket(188, 17, 5) ] },
+    { type: 'push', data: [ simplePacket(188, 9, 13) ] },
+    { type: 'push', data: [ simplePacket(188, 0, 61) ] },
+    { type: 'push', data: [ simplePacket(188, 13, 4) ] },
+    { type: 'get', expectedSegmentLength: 188 * 2 },
+    { type: 'push', data: [ simplePacket(188, 0, 61) ] },
+    { type: 'push', data: [ simplePacket(188, 41, 19) ] },
+    { type: 'get', expectedSegmentLength: 188 * 2 }
     ]);
     
 var xhr = new XMLHttpRequest();
@@ -180,5 +208,5 @@ testSegmenter('Example file', [
         simplePacket(188, 0, 32),
         simplePacket(188, 4, 44)
     ] },
-    { type: 'get', 'expectedSegmentLength': exampleFile.length }
+    { type: 'get', expectedSegmentLength: exampleFile.length }
     ]);

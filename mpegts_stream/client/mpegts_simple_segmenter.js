@@ -52,10 +52,10 @@ var MpegtsSimpleSegmenter = (function MpegtsSimpleSegmenterClosure() {
     MpegtsSimpleSegmenter.prototype._tryDequeueNextSegment = function dequeue() {
         var beforeLastPacketOffset = this._getLastFullPacketOffset();
         if (beforeLastPacketOffset < 0) {
-            return -1;
+            return;
         }
         
-        var lastPAT = this._getLastAssociationTable(beforeLastPacketOffset);
+        var lastPAT = this._getLastElementaryStreamPacket(beforeLastPacketOffset);
         this._offsetChecked = beforeLastPacketOffset;
         
         if (lastPAT < 0 || lastPAT === this._bufferLength) {
@@ -95,37 +95,9 @@ var MpegtsSimpleSegmenter = (function MpegtsSimpleSegmenterClosure() {
             this._buffers[0] = this._buffers[0].subarray(length);
         }
         
-        this._bufferLength = untilOffset;
+        this._bufferLength = untilOffset + 1;
         
         return subArrays;
-
-        //var data = new Uint8Array(length);
-        //var offsetInArray = 0;
-        //while (length > 0) {
-        //    if (this._buffers.length === 0) {
-        //        throw 'Inconsistent buffer length';
-        //    }
-        //    
-        //    var subArray;
-        //    if (length >= this._buffers[0].length) {
-        //        subArray = this._buffers[0].shift();
-        //    } else {
-        //        subArray = this._buffers[0].subarray(0, length);
-        //        this._buffers[0] = this._buffers[0].subarray(length);
-        //    }
-        //    
-        //    data.set(subArray, offsetInArray);
-        //    offsetInArray += subArray.length;
-        //    length -= subArray.length;
-        //}
-        //
-        //if (length !== 0 || offsetInArray !== data.length) {
-        //    throw 'Inconsistent data copy';
-        //}
-        
-        //this._bufferLength -= untilOffset;
-        
-        //return data;
     };    
     MpegtsSimpleSegmenter.prototype._getLastFullPacketOffset =
         function getLastFullPacketOffset() {
@@ -157,17 +129,28 @@ var MpegtsSimpleSegmenter = (function MpegtsSimpleSegmenterClosure() {
         return beforeLastPacketOffset;
     };
     
-    MpegtsSimpleSegmenter.prototype._getLastAssociationTable =
-        function getLastPAT(startFromPacket) {
+    MpegtsSimpleSegmenter.prototype._getLastElementaryStreamPacket =
+        function _getLastElementaryStreamPacket(startFromPacket) {
         
         var packetOffset = startFromPacket;
         while (packetOffset > 0 && packetOffset < this._offsetChecked) {
-            var pid = this._getBytes(packetOffset - 1, 2);
-            pid &= 0x1FFF;
-            if (pid === 0) {
-                return packetOffset;
+            var tsHeader = this._getBytes(packetOffset - 1, 3);
+            var isPayloadUnitStart = !!(tsHeader & 0x400000);
+            if (isPayloadUnitStart) {
+                var payloadStart = packetOffset - 4;
+                var isAdaptationFieldExist = !!(tsHeader & 0x000020);
+                if (isAdaptationFieldExist) {
+                    var adaptationFieldLength = this._getBytes(payloadStart);
+                    payloadStart += adaptationFieldLength + 1;
+                }
+
+                var firstPayloadBytes = this._getBytes(payloadStart, 3);
+                if (firstPayloadBytes === 0x000001) {
+                    return packetOffset;
+                }
+
             }
-            
+
             packetOffset = this._getPreviousPacketOffset(packetOffset);
         }
         
@@ -247,7 +230,7 @@ var MpegtsSimpleSegmenter = (function MpegtsSimpleSegmenterClosure() {
         return -1;
     };
     
-    MpegtsSimpleSegmenter.prototype._getBytes = function getByte(offset, length) {
+    MpegtsSimpleSegmenter.prototype._getBytes = function getBytes(offset, length) {
         var i, offsetInArray;
         for (i = this._buffers.length - 1; i >= 0; --i) {
             var bufferLen = this._buffers[i].length;
