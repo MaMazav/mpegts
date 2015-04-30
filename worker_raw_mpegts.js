@@ -36,14 +36,25 @@ require(['async', 'jbinary', './mpegts_to_mp4/mpegts', './mpegts_to_mp4/index', 
 
 					console.time('convert');
 					var mp4 = mpegts_to_mp4(mpegts, streamContext);
-					console.timeEnd('convert');
-					
-					postMessage({
-						type: 'video',
-						index: msg.index,
-						original: msg.url,
-						url: mp4.toURI('video/mp4')
-					});
+                    
+                    if (mp4 !== null) {
+                        console.timeEnd('convert');
+
+                        postMessage({
+                            type: 'video',
+                            index: msg.index,
+                            original: msg.url,
+                            url: mp4.toURI('video/mp4')
+                        });
+                    } else {
+                        console.timeEnd('not enough data to convert');
+                        
+                        postMessage({
+                            type: 'notEnoughData',
+                            index: msg.index,
+                            original: msg.url
+                        });
+                    }
 				});
 			});
 		});

@@ -42,6 +42,13 @@
 			case 'debug':
 				Function.prototype.apply.call(console[data.action], console, data.args);
 				return;
+                
+            case 'notEnoughData':
+                --sentVideos;
+                if (sentVideos - nextIndex <= 1) {
+                    getMore();
+                }
+                return;
 
 			// got new converted MP4 video data
 			case 'video':

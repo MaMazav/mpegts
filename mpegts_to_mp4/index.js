@@ -42,11 +42,27 @@
 		}
 		
 		var pesStream = new jBinary(stream.slice(0, stream.tell()), PES),
-			audioStream = new jBinary(stream.byteLength, ADTS),
+            paramsSets = videoInfo.pendingParamsSets,
 			samples = [],
-			audioSamples = [];
+			audioSamples = [],
+            lastDtsChangeSample = 0,
+            lastDtsChangeOffset = 0,
+            lastDtsChangeAudioOffset = 0,
+            dstChangesCount = 0;
 
-		stream = new jDataView(stream.byteLength);
+        videoInfo.pendingParamsSets = videoInfo.pendingParamsSets || {};
+        
+        var pendingStreamLength = (videoInfo.pendingStream || {}).byteLength || 0;
+		stream = new jDataView(stream.byteLength + pendingStreamLength);
+        if (pendingStreamLength > 0) {
+            stream.writeBytes(videoInfo.pendingStream.getBytes(0, videoInfo.pendingStream.tell()));
+        }
+        
+        var pendingAudioStreamLength = (videoInfo.pendingAudioStream || {}).byteLength || 0;
+        var audioStream = new jBinary(stream.byteLength + pendingAudioStreamLength, ADTS);
+        if (pendingAudioStreamLength > 0) {
+            audioStream.writeBytes(videoInfo.pendingAudioStream.getBytes(0, videoInfo.pendingAudioStream.tell()));
+        }
 		
 		while (pesStream.tell() < pesStream.view.byteLength) {
 			var packet = pesStream.read('PESPacket');
@@ -62,28 +78,40 @@
 					curSample = {offset: stream.tell(), pts: pts, dts: dts !== undefined ? dts : pts};
 				
 				samples.push(curSample);
+
+                if (dts !== samples[lastDtsChangeSample].dts) {
+                    ++dstChangesCount;
+                    lastDtsChangeSample = samples.length;
+                    lastDtsChangeOffset = stream.offset;
+                    lastDtsChangeAudioOffset = audioStream.offset;
+                    
+                    paramsSets = paramsSets || videoInfo.pendingParamsSets;
+                    videoInfo.pendingParamsSets = {};
+                }
 				
 				// collecting info from H.264 NAL units
 				while (nalStream.tell() < nalStream.view.byteLength) {
 					var nalUnit = nalStream.read('NALUnit');
 					switch (nalUnit[0] & 0x1F) {
 						case 7:
-							if (!videoInfo.spsInfo) {
-								videoInfo.sps = nalUnit;
-								videoInfo.spsInfo = new jBinary(videoInfo.sps, H264).read('SPS');
-								videoInfo.width = (videoInfo.spsInfo.pic_width_in_mbs_minus_1 + 1) * 16;
-								videoInfo.height = (2 - videoInfo.spsInfo.frame_mbs_only_flag) * (videoInfo.spsInfo.pic_height_in_map_units_minus_1 + 1) * 16;
-								var cropping = videoInfo.spsInfo.frame_cropping;
+							if (!videoInfo.pendingParamsSets.sps) {
+								videoInfo.pendingParamsSets.sps = nalUnit;
+								videoInfo.pendingParamsSets.spsInfo = new jBinary(videoInfo.pendingParamsSets.sps, H264).read('SPS');
+								videoInfo.pendingParamsSets.width = (videoInfo.pendingParamsSets.spsInfo.pic_width_in_mbs_minus_1 + 1) * 16;
+								videoInfo.pendingParamsSets.height =
+                                    (2 - videoInfo.pendingParamsSets.spsInfo.frame_mbs_only_flag) *
+                                    (videoInfo.pendingParamsSets.spsInfo.pic_height_in_map_units_minus_1 + 1) * 16;
+								var cropping = videoInfo.pendingParamsSets.spsInfo.frame_cropping;
 								if (cropping) {
-									videoInfo.width -= 2 * (cropping.left + cropping.right);
-									videoInfo.height -= 2 * (cropping.top + cropping.bottom);
+									videoInfo.pendingParamsSets.width -= 2 * (cropping.left + cropping.right);
+									videoInfo.pendingParamsSets.height -= 2 * (cropping.top + cropping.bottom);
 								}
 							}
 							break;
 
 						case 8:
-							if (!videoInfo.pps) {
-								videoInfo.pps = nalUnit;
+							if (!videoInfo.pendingParamsSets.pps) {
+								videoInfo.pendingParamsSets.pps = nalUnit;
 							}
 							break;
 
@@ -97,6 +125,30 @@
 				}
 			}
 		}
+        
+        if (isLiveStream) {
+            if (!paramsSets) {
+                paramsSets = videoInfo.oldParamsSets;
+            }
+            
+            videoInfo.oldParamsSets = paramsSets;
+            
+            if (dstChangesCount < 3) {
+                videoInfo.pendingSamples = samples;
+                videoInfo.pendingStream = stream;
+                videoInfo.pendingAudioStream = audioStream;
+                
+                return null;
+            }
+            
+            videoInfo.pendingSamples = samples.slice(lastDtsChangeSample);
+            videoInfo.pendingStream = stream.slice(lastDtsChangeOffset);
+            videoInfo.pendingAudioStream = audioStream.slice(lastDtsChangeAudioOffset);
+            
+            samples = samples.slice(0, lastDtsChangeSample);
+            stream = stream.slice(0, lastDtsChangeOffset);
+            audioStream = audioStream.slice(0, lastDtsChangeAudioOffset);
+        }
 		
 		samples.push({offset: stream.tell()});
 
@@ -163,18 +215,17 @@
 		var audioStart = stream.tell(),
 			audioSize = audioStream.tell(),
 			audioSizes = [],
-			audioHeader,
 			maxAudioSize = 0;
 			
 		audioStream.seek(0);
 		
 		while (audioStream.tell() < audioSize) {
-			audioHeader = audioStream.read('ADTSPacket');
-			audioSizes.push(audioHeader.data.length);
-			if (audioHeader.data.length > maxAudioSize) {
-				maxAudioSize = audioHeader.data.length;
+			videoInfo.audioHeader = audioStream.read('ADTSPacket');
+			audioSizes.push(videoInfo.audioHeader.data.length);
+			if (videoInfo.audioHeader.data.length > maxAudioSize) {
+				maxAudioSize = videoInfo.audioHeader.data.length;
 			}
-			stream.writeBytes(audioHeader.data);
+			stream.writeBytes(videoInfo.audioHeader.data);
 		}
 
 		// generating resulting MP4
@@ -197,8 +248,8 @@
 						u: 0, v: 0, w: 1
 					},
 					dimensions: {
-						horz: videoInfo.width,
-						vert: videoInfo.height
+						horz: paramsSets.width,
+						vert: paramsSets.height
 					}
 				}],
 				mdia: [{
@@ -247,8 +298,8 @@
 												type: 'avc1',
 												data_reference_index: 1,
 												dimensions: {
-													horz: videoInfo.width,
-													vert: videoInfo.height
+													horz: paramsSets.width,
+													vert: paramsSets.height
 												},
 												resolution: {
 													horz: 72,
@@ -260,12 +311,12 @@
 												atoms: {
 													avcC: [{
 														version: 1,
-														profileIndication: videoInfo.spsInfo.profile_idc,
-														profileCompatibility: parseInt(videoInfo.spsInfo.constraint_set_flags.join(''), 2),
-														levelIndication: videoInfo.spsInfo.level_idc,
+														profileIndication: paramsSets.spsInfo.profile_idc,
+														profileCompatibility: parseInt(paramsSets.spsInfo.constraint_set_flags.join(''), 2),
+														levelIndication: paramsSets.spsInfo.level_idc,
 														lengthSizeMinusOne: 3,
-														seqParamSets: [videoInfo.sps],
-														pictParamSets: [videoInfo.pps]
+														seqParamSets: [paramsSets.sps],
+														pictParamSets: [paramsSets.pps]
 													}]
 												}
 											}]
@@ -410,9 +461,9 @@
 																	descriptor_type: 5,
 																	ext_type: 128,
 																	length: 2,
-																	audio_profile: audioHeader.profileMinusOne + 1,
-																	sampling_freq: audioHeader.samplingFreq,
-																	channelConfig: audioHeader.channelConfig
+																	audio_profile: videoInfo.audioHeader.profileMinusOne + 1,
+																	sampling_freq: videoInfo.audioHeader.samplingFreq,
+																	channelConfig: videoInfo.audioHeader.channelConfig
 																},
 																{
 																	descriptor_type: 6,
