@@ -42,7 +42,6 @@
 		}
 		
 		var pesStream = new jBinary(stream.slice(0, stream.tell()), PES),
-            paramsSets = videoInfo.pendingParamsSets,
 			samples = [],
 			audioSamples = [],
             lastDtsChangeSample = 0,
@@ -50,8 +49,6 @@
             lastDtsChangeAudioOffset = 0,
             dstChangesCount = 0;
 
-        videoInfo.pendingParamsSets = videoInfo.pendingParamsSets || {};
-        
         var pendingStreamLength = (videoInfo.pendingStream || {}).byteLength || 0;
 		stream = new jDataView(stream.byteLength + pendingStreamLength);
         if (pendingStreamLength > 0) {
@@ -82,11 +79,14 @@
                 if (dts !== samples[lastDtsChangeSample].dts) {
                     ++dstChangesCount;
                     lastDtsChangeSample = samples.length;
-                    lastDtsChangeOffset = stream.offset;
-                    lastDtsChangeAudioOffset = audioStream.offset;
+                    lastDtsChangeOffset = stream.tell();
+                    lastDtsChangeAudioOffset = audioStream.tell();
                     
-                    paramsSets = paramsSets || videoInfo.pendingParamsSets;
-                    videoInfo.pendingParamsSets = {};
+                    videoInfo.spsData = videoInfo.spsData || videoInfo.pendingSpsData;
+                    videoInfo.pps = videoInfo.pps  || videoInfo.pendingPps;
+                    
+                    videoInfo.pendingSpsData = null;
+                    videoInfo.pendingPps = null;
                 }
 				
 				// collecting info from H.264 NAL units
@@ -94,24 +94,28 @@
 					var nalUnit = nalStream.read('NALUnit');
 					switch (nalUnit[0] & 0x1F) {
 						case 7:
-							if (!videoInfo.pendingParamsSets.sps) {
-								videoInfo.pendingParamsSets.sps = nalUnit;
-								videoInfo.pendingParamsSets.spsInfo = new jBinary(videoInfo.pendingParamsSets.sps, H264).read('SPS');
-								videoInfo.pendingParamsSets.width = (videoInfo.pendingParamsSets.spsInfo.pic_width_in_mbs_minus_1 + 1) * 16;
-								videoInfo.pendingParamsSets.height =
-                                    (2 - videoInfo.pendingParamsSets.spsInfo.frame_mbs_only_flag) *
-                                    (videoInfo.pendingParamsSets.spsInfo.pic_height_in_map_units_minus_1 + 1) * 16;
-								var cropping = videoInfo.pendingParamsSets.spsInfo.frame_cropping;
+							if (!videoInfo.pendingSpsData) {
+                                var spsInfo = new jBinary(nalUnit, H264).read('SPS');
+								videoInfo.pendingSpsData = {
+                                    sps : nalUnit,
+                                    spsInfo : spsInfo,
+                                    width : (spsInfo.pic_width_in_mbs_minus_1 + 1) * 16,
+                                    height :
+                                        (2 - spsInfo.frame_mbs_only_flag) *
+                                        (spsInfo.pic_height_in_map_units_minus_1 + 1) * 16
+                                };
+                                
+								var cropping = spsInfo.frame_cropping;
 								if (cropping) {
-									videoInfo.pendingParamsSets.width -= 2 * (cropping.left + cropping.right);
-									videoInfo.pendingParamsSets.height -= 2 * (cropping.top + cropping.bottom);
+									videoInfo.pendingSpsData.width -= 2 * (cropping.left + cropping.right);
+									videoInfo.pendingSpsData.height -= 2 * (cropping.top + cropping.bottom);
 								}
 							}
 							break;
 
 						case 8:
-							if (!videoInfo.pendingParamsSets.pps) {
-								videoInfo.pendingParamsSets.pps = nalUnit;
+							if (!videoInfo.pendingPps) {
+								videoInfo.pendingPps = nalUnit;
 							}
 							break;
 
@@ -126,28 +130,39 @@
 			}
 		}
         
+        var spsData, pps;
+        
         if (isLiveStream) {
-            if (!paramsSets) {
-                paramsSets = videoInfo.oldParamsSets;
-            }
-            
-            videoInfo.oldParamsSets = paramsSets;
-            
-            if (dstChangesCount < 3) {
+            spsData = videoInfo.spsData || videoInfo.oldSpsData;
+            pps = videoInfo.pps || videoInfo.oldPps;
+
+            if (dstChangesCount < 3 || !spsData || !pps) {
                 videoInfo.pendingSamples = samples;
                 videoInfo.pendingStream = stream;
                 videoInfo.pendingAudioStream = audioStream;
                 
+                videoInfo.pendingSpsData = videoInfo.spsData || videoInfo.pendingSpsData;
+                videoInfo.pendingPps = videoInfo.pps || videoInfo.pendingPps;
+                
                 return null;
             }
             
-            videoInfo.pendingSamples = samples.slice(lastDtsChangeSample);
-            videoInfo.pendingStream = stream.slice(lastDtsChangeOffset);
-            videoInfo.pendingAudioStream = audioStream.slice(lastDtsChangeAudioOffset);
+            videoInfo.oldSpsData = spsData;
+            videoInfo.oldPps = pps;
             
-            samples = samples.slice(0, lastDtsChangeSample);
-            stream = stream.slice(0, lastDtsChangeOffset);
-            audioStream = audioStream.slice(0, lastDtsChangeAudioOffset);
+            var streamPosition = stream.tell();
+            var audioPosition = audioStream.tell();
+            
+            videoInfo.pendingSamples = samples.slice(lastDtsChangeSample);
+            videoInfo.pendingStream = stream.slice(lastDtsChangeOffset, streamPosition);
+            videoInfo.pendingAudioStream = audioStream.slice(lastDtsChangeAudioOffset, audioPosition);
+            
+            samples.length = lastDtsChangeSample;
+            stream.seek(lastDtsChangeOffset);
+            audioStream.seek(lastDtsChangeAudioOffset);
+        } else {
+            spsData = videoInfo.spsData || videoInfo.pendingSpsData;
+            pps = videoInfo.pps || videoInfo.pps;
         }
 		
 		samples.push({offset: stream.tell()});
@@ -248,8 +263,8 @@
 						u: 0, v: 0, w: 1
 					},
 					dimensions: {
-						horz: paramsSets.width,
-						vert: paramsSets.height
+						horz: spsData.width,
+						vert: spsData.height
 					}
 				}],
 				mdia: [{
@@ -298,8 +313,8 @@
 												type: 'avc1',
 												data_reference_index: 1,
 												dimensions: {
-													horz: paramsSets.width,
-													vert: paramsSets.height
+													horz: spsData.width,
+													vert: spsData.height
 												},
 												resolution: {
 													horz: 72,
@@ -311,12 +326,12 @@
 												atoms: {
 													avcC: [{
 														version: 1,
-														profileIndication: paramsSets.spsInfo.profile_idc,
-														profileCompatibility: parseInt(paramsSets.spsInfo.constraint_set_flags.join(''), 2),
-														levelIndication: paramsSets.spsInfo.level_idc,
+														profileIndication: spsData.spsInfo.profile_idc,
+														profileCompatibility: parseInt(spsData.spsInfo.constraint_set_flags.join(''), 2),
+														levelIndication: spsData.spsInfo.level_idc,
 														lengthSizeMinusOne: 3,
-														seqParamSets: [paramsSets.sps],
-														pictParamSets: [paramsSets.pps]
+														seqParamSets: [spsData.sps],
+														pictParamSets: [pps]
 													}]
 												}
 											}]
@@ -523,6 +538,9 @@
 				minor_version: 512,
 				compatible_brands: ['isom', 'iso2', 'avc1', 'mp41']
 			}],
+			mdat: [{
+				_rawData: stream.getBytes(stream.tell(), 0)
+			}],
 			moov: [{
 				atoms: {
 					mvhd: [{
@@ -543,9 +561,6 @@
 					}],
 					trak: trak
 				}
-			}],
-			mdat: [{
-				_rawData: stream.getBytes(stream.tell(), 0)
 			}]
 		});
 		

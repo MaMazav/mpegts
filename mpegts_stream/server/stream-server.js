@@ -8,8 +8,8 @@ if( process.argv.length < 3 ) {
 }
 
 var STREAM_SECRET = process.argv[2],
-	STREAM_PORT = process.argv[3] || 8083,
-	WEBSOCKET_PORT = process.argv[4] || 8084,
+	STREAM_PORT = process.argv[3] || 8085,
+	WEBSOCKET_PORT = process.argv[4] || 8087,
 	STREAM_MAGIC_BYTES = 'mpts.js'; // Must be 7 bytes
 
 var width = 320,

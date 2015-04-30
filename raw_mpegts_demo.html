@@ -31,7 +31,7 @@
 	
 	<script src="mpegts_stream/client/mpegts_simple_segmenter.js"></script>
 	<script src="mpegts_stream/client/mpegts_websocket_reciever.js"></script>
-	<script src="browser_raw_mpegts.js" data-canvas="canvas" data-websocket="ws://localhost:8085">
+	<script src="browser_raw_mpegts.js" data-canvas="canvas" data-websocket="ws://localhost:8087">
 		// UI initialization when first video chunk is converted
 
 		document.body.classList.remove('loading');
@@ -45,5 +45,7 @@
 			});
 		});
 	</script>
+	
+	<script src="mpegts_to_mp4/index.js"></script>
 </body>
 </html>

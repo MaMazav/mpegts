@@ -134,6 +134,7 @@
 				.map(resolveURL.bind(null, manifest));
 
 			originals = originals.slice(originals.lastIndexOf(lastOriginal) + 1);
+            originals = ['400k00001_after_ffmpeg.ts'];
 			lastOriginal = originals[originals.length - 1];
 
 			worker.postMessage(originals.map(function (url, index) {

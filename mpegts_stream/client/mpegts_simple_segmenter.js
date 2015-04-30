@@ -55,14 +55,14 @@ var MpegtsSimpleSegmenter = (function MpegtsSimpleSegmenterClosure() {
             return;
         }
         
-        var lastPAT = this._getLastElementaryStreamPacket(beforeLastPacketOffset);
+        var lastPesPacket = this._getLastElementaryStreamPacket(beforeLastPacketOffset);
         this._offsetChecked = beforeLastPacketOffset;
         
-        if (lastPAT < 0 || lastPAT === this._bufferLength) {
+        if (lastPesPacket < 0 || lastPesPacket === this._bufferLength) {
             return;
         }
         
-        var result = this._dequeueBytes(lastPAT);
+        var result = this._dequeueBytes(lastPesPacket);
         if (this._isReturnAsBlob) {
             result = new Blob(result, { type: 'application/octet-binary' });
         }
