@@ -273,14 +273,47 @@
         }],
 
         trun: ['extend', 'FullBox', {
+            // TODO: Those fields are optional!
             sample_count: 'uint32',
-            data_offset: 'int32',
-            first_sample_flags: 'uint32',
+            data_offset: ['if', function () { 
+                    return this.binary.getContext('flags').flags & 0x1;
+                }, 'int32'],
+            first_sample_flags: ['if', function () {
+                    return this.binary.getContext('flags').flags & 0x4;
+                }, 'uint32'],
+            _reserved: function() {
+                var flags = this.binary.getContext('flags').flags;
+                var countReservedUints = (flags & 0x2) ? 1 : 0;
+                countReservedUints += (flags & 0x08) ? 1 : 0;
+                countReservedUints += (flags & 0x10) ? 1 : 0;
+                countReservedUints += (flags & 0x20) ? 1 : 0;
+                countReservedUints += (flags & 0x40) ? 1 : 0;
+                countReservedUints += (flags & 0x80) ? 1 : 0;
+                
+                return countReservedUints;
+            },
             samples_array: ['array', {
-                sample_duration: 'uint32',
-                sample_size: 'uint32',
-                sample_flags: 'uint32',
-                sample_composition_time_offset: 'uint32'
+                sample_duration: ['if', function () {
+                        return this.binary.getContext('flags').flags & 0x100;
+                    }, 'uint32'],
+                sample_size: ['if', function () {
+                        return this.binary.getContext('flags').flags & 0x200;
+                    }, 'uint32'],
+                sample_flags: ['if', function () {
+                        return this.binary.getContext('flags').flags & 0x400;
+                    }, 'uint32'],
+                sample_composition_time_offset: ['if', function () {
+                        return this.binary.getContext('flags').flags & 0x800;
+                    }, 'uint32'],
+                _reserved: function() {
+                    var flags = this.binary.getContext('flags').flags;
+                    var countReservedUints = (flags & 0x1000) ? 1 : 0;
+                    countReservedUints += (flags & 0x2000) ? 1 : 0;
+                    countReservedUints += (flags & 0x4000) ? 1 : 0;
+                    countReservedUints += (flags & 0x8000) ? 1 : 0;
+                    
+                    return countReservedUints;
+                },
             }, 'sample_count']
         }],
         
