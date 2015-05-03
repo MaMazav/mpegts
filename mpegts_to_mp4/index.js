@@ -43,14 +43,13 @@
 		
 		var pesStream = new jBinary(stream.slice(0, stream.tell()), PES),
 			samples = [],
-			audioSamples = [],
             lastDtsChangeSample = 0,
             lastDtsChangeOffset = 0,
-            lastDtsChangeAudioOffset = 0,
-            dstChangesCount = 0;
+            lastDtsChangeAudioOffset = 0;
         
         videoInfo.oldSpsData = videoInfo.spsData;
         videoInfo.oldPps = videoInfo.pps;
+        videoInfo.dtsChangesCount = videoInfo.dtsChangesCount || 0;
         
         videoInfo.spsData = null;
         videoInfo.pps = null;
@@ -83,7 +82,7 @@
 				samples.push(curSample);
 
                 if (dts !== samples[lastDtsChangeSample].dts) {
-                    ++dstChangesCount;
+                    ++videoInfo.dtsChangesCount;
                     lastDtsChangeSample = samples.length;
                     lastDtsChangeOffset = stream.tell();
                     lastDtsChangeAudioOffset = audioStream.tell();
@@ -137,7 +136,7 @@
         videoInfo.pps = videoInfo.pps || videoInfo.oldPps || videoInfo.pendingPps;
         
         if (isLiveStream) {
-            if (dstChangesCount < 3 || !videoInfo.spsData || !videoInfo.pps) {
+            if (videoInfo.dtsChangesCount < 3 || !videoInfo.spsData || !videoInfo.pps) {
                 videoInfo.pendingSamples = samples;
                 videoInfo.pendingStream = stream;
                 videoInfo.pendingAudioStream = audioStream;
@@ -145,6 +144,7 @@
                 return null;
             }
             
+            videoInfo.dtsChangesCount = 0;
             videoInfo.pendingSamples = samples.slice(lastDtsChangeSample);
             videoInfo.pendingStream = stream.slice(lastDtsChangeOffset, stream.tell());
             videoInfo.pendingAudioStream = audioStream.slice(lastDtsChangeAudioOffset, audioStream.tell());
