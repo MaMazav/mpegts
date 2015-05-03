@@ -43,22 +43,27 @@
 		
 		var pesStream = new jBinary(stream.slice(0, stream.tell()), PES),
 			samples = [],
-			audioSamples = [],
             lastDtsChangeSample = 0,
             lastDtsChangeOffset = 0,
-            lastDtsChangeAudioOffset = 0,
-            dstChangesCount = 0;
+            lastDtsChangeAudioOffset = 0;
+        
+        videoInfo.oldSpsData = videoInfo.spsData;
+        videoInfo.oldPps = videoInfo.pps;
+        videoInfo.dtsChangesCount = videoInfo.dtsChangesCount || 0;
+        
+        videoInfo.spsData = null;
+        videoInfo.pps = null;
 
         var pendingStreamLength = (videoInfo.pendingStream || {}).byteLength || 0;
 		stream = new jDataView(stream.byteLength + pendingStreamLength);
         if (pendingStreamLength > 0) {
-            stream.writeBytes(videoInfo.pendingStream.getBytes(0, videoInfo.pendingStream.tell()));
+            stream.writeBytes(videoInfo.pendingStream.getBytes(0, videoInfo.pendingStream.byteLength));
         }
         
         var pendingAudioStreamLength = (videoInfo.pendingAudioStream || {}).byteLength || 0;
         var audioStream = new jBinary(stream.byteLength + pendingAudioStreamLength, ADTS);
         if (pendingAudioStreamLength > 0) {
-            audioStream.writeBytes(videoInfo.pendingAudioStream.getBytes(0, videoInfo.pendingAudioStream.tell()));
+            audioStream.writeBytes(videoInfo.pendingAudioStream.getBytes(0, videoInfo.pendingAudioStream.byteLength));
         }
 		
 		while (pesStream.tell() < pesStream.view.byteLength) {
@@ -77,11 +82,11 @@
 				samples.push(curSample);
 
                 if (dts !== samples[lastDtsChangeSample].dts) {
-                    ++dstChangesCount;
+                    ++videoInfo.dtsChangesCount;
                     lastDtsChangeSample = samples.length;
                     lastDtsChangeOffset = stream.tell();
                     lastDtsChangeAudioOffset = audioStream.tell();
-                    
+
                     videoInfo.spsData = videoInfo.spsData || videoInfo.pendingSpsData;
                     videoInfo.pps = videoInfo.pps  || videoInfo.pendingPps;
                     
@@ -95,21 +100,21 @@
 					switch (nalUnit[0] & 0x1F) {
 						case 7:
 							if (!videoInfo.pendingSpsData) {
-                                var spsInfo = new jBinary(nalUnit, H264).read('SPS');
-								videoInfo.pendingSpsData = {
+                                var spsData = {
                                     sps : nalUnit,
-                                    spsInfo : spsInfo,
-                                    width : (spsInfo.pic_width_in_mbs_minus_1 + 1) * 16,
-                                    height :
-                                        (2 - spsInfo.frame_mbs_only_flag) *
-                                        (spsInfo.pic_height_in_map_units_minus_1 + 1) * 16
+                                    spsInfo : new jBinary(nalUnit, H264).read('SPS')
                                 };
-                                
-								var cropping = spsInfo.frame_cropping;
+                                spsData.width = (spsData.spsInfo.pic_width_in_mbs_minus_1 + 1) * 16,
+                                spsData.height =
+                                    (2 - spsData.spsInfo.frame_mbs_only_flag) *
+                                    (spsData.spsInfo.pic_height_in_map_units_minus_1 + 1) * 16;
+								var cropping = spsData.spsInfo.frame_cropping;
 								if (cropping) {
-									videoInfo.pendingSpsData.width -= 2 * (cropping.left + cropping.right);
-									videoInfo.pendingSpsData.height -= 2 * (cropping.top + cropping.bottom);
+									spsData.spsInfo.width -= 2 * (cropping.left + cropping.right);
+									spsData.spsInfo.height -= 2 * (cropping.top + cropping.bottom);
 								}
+                                
+                                videoInfo.pendingSpsData = spsData;
 							}
 							break;
 
@@ -130,13 +135,11 @@
 			}
 		}
         
-        var spsData, pps;
+        videoInfo.spsData = videoInfo.spsData || videoInfo.oldSpsData || videoInfo.pendingSpsData;
+        videoInfo.pps = videoInfo.pps || videoInfo.oldPps || videoInfo.pendingPps;
         
         if (isLiveStream) {
-            spsData = videoInfo.spsData || videoInfo.oldSpsData;
-            pps = videoInfo.pps || videoInfo.oldPps;
-
-            if (dstChangesCount < 3 || !spsData || !pps) {
+            if (videoInfo.dtsChangesCount < 3 || !videoInfo.spsData || !videoInfo.pps) {
                 videoInfo.pendingSamples = samples;
                 videoInfo.pendingStream = stream;
                 videoInfo.pendingAudioStream = audioStream;
@@ -147,22 +150,14 @@
                 return null;
             }
             
-            videoInfo.oldSpsData = spsData;
-            videoInfo.oldPps = pps;
-            
-            var streamPosition = stream.tell();
-            var audioPosition = audioStream.tell();
-            
+            videoInfo.dtsChangesCount = 0;
             videoInfo.pendingSamples = samples.slice(lastDtsChangeSample);
-            videoInfo.pendingStream = stream.slice(lastDtsChangeOffset, streamPosition);
-            videoInfo.pendingAudioStream = audioStream.slice(lastDtsChangeAudioOffset, audioPosition);
+            videoInfo.pendingStream = stream.slice(lastDtsChangeOffset, stream.tell());
+            videoInfo.pendingAudioStream = audioStream.slice(lastDtsChangeAudioOffset, audioStream.tell());
             
             samples.length = lastDtsChangeSample;
             stream.seek(lastDtsChangeOffset);
             audioStream.seek(lastDtsChangeAudioOffset);
-        } else {
-            spsData = videoInfo.spsData || videoInfo.pendingSpsData;
-            pps = videoInfo.pps || videoInfo.pps;
         }
 		
 		samples.push({offset: stream.tell()});
@@ -263,8 +258,8 @@
 						u: 0, v: 0, w: 1
 					},
 					dimensions: {
-						horz: spsData.width,
-						vert: spsData.height
+						horz: videoInfo.spsData.width,
+						vert: videoInfo.spsData.height
 					}
 				}],
 				mdia: [{
@@ -313,8 +308,8 @@
 												type: 'avc1',
 												data_reference_index: 1,
 												dimensions: {
-													horz: spsData.width,
-													vert: spsData.height
+													horz: videoInfo.spsData.width,
+													vert: videoInfo.spsData.height
 												},
 												resolution: {
 													horz: 72,
@@ -326,12 +321,12 @@
 												atoms: {
 													avcC: [{
 														version: 1,
-														profileIndication: spsData.spsInfo.profile_idc,
-														profileCompatibility: parseInt(spsData.spsInfo.constraint_set_flags.join(''), 2),
-														levelIndication: spsData.spsInfo.level_idc,
+														profileIndication: videoInfo.spsData.spsInfo.profile_idc,
+														profileCompatibility: parseInt(videoInfo.spsData.spsInfo.constraint_set_flags.join(''), 2),
+														levelIndication: videoInfo.spsData.spsInfo.level_idc,
 														lengthSizeMinusOne: 3,
-														seqParamSets: [spsData.sps],
-														pictParamSets: [pps]
+														seqParamSets: [videoInfo.spsData.sps],
+														pictParamSets: [videoInfo.pps]
 													}]
 												}
 											}]

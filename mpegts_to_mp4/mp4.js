@@ -226,6 +226,8 @@
 		}],
 
 		moov: 'MultiBox',
+        
+        moof: 'MultiBox',
 
 		mvhd: ['extend', 'DurationBox', {
 			rate: 'Rate',
@@ -235,8 +237,14 @@
 			_reserved2: ['skip', 24],
 			next_track_ID: 'uint32'
 		}],
+        
+        mfhd: ['extend', 'FullBox', {
+            sequence_number: 'uint32'
+        }],
 
 		trak: 'MultiBox',
+        
+        traf: 'MultiBox',
 
 		tkhd: ['extend', 'TimestampBox', {
 			track_ID: 'uint32',
@@ -250,6 +258,44 @@
 			matrix: 'TransformationMatrix',
 			dimensions: ['Dimensions', 'Rate']
 		}],
+        
+        tfhd: ['extend', 'FullBox', {
+            track_ID: 'uint32',
+            base_data_offset: 'uint64',
+            sample_description_index: 'uint32',
+            default_sample_duration: 'uint32',
+            default_sample_size: 'uint32',
+            default_sample_flags: 'uint32'
+        }],
+        
+        tfdt: ['extend', 'FullBox', {
+            base_media_decode_time: ['FBVersionable', 'uint32', 'uint64']
+        }],
+
+        trun: ['extend', 'FullBox', {
+            sample_count: 'uint32',
+            data_offset: 'int32',
+            first_sample_flags: 'uint32',
+            samples_array: ['array', {
+                sample_duration: 'uint32',
+                sample_size: 'uint32',
+                sample_flags: 'uint32',
+                sample_composition_time_offset: 'uint32'
+            }, 'sample_count']
+        }],
+        
+        sidx: ['extend', 'FullBox', {
+            earliest_composition_time: ['FBVersionable', 'uint32', 'uint64'],
+            reference_count: 'uint16',
+            references: ['array', {
+                reference_type: 1,
+                reference_offset: 31,
+                subsegment_duration: 'uint32',
+                contains_rap: 1,
+                rap_delta_time: 31
+            }, 'reference_count']
+        }],
+                
 
 		tref: 'MultiBox',
 
@@ -580,6 +626,14 @@
 		}],
 
 		mvex: 'MultiBox',
+        
+        trex: ['extend', 'FullBox', {
+            track_ID: 'uint32',
+            default_sample_description_index: 'uint32',
+            default_sample_duration: 'uint32',
+            default_sample_size: 'uint32',
+            default_sample_flags: 'uint32'
+        }],
 
 		mehd: ['extend', 'FullBox', {
 			fragment_duration: 'FBUint'
@@ -746,6 +800,8 @@
 				}
 			})
 		}],
+        
+        udta: 'BoxHeader',
 
 		File: ['Atoms', function () { return this.binary.view.byteLength }]
 	};
