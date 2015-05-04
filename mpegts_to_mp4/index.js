@@ -405,103 +405,103 @@
             };
         }
         
+        var compatible_brands = ['isom', 'iso2', 'avc1', 'mp41'];
+        
+        var mp4File = {
+			ftyp: [{
+				major_brand: 'isom',
+				minor_version: 512,
+				compatible_brands: compatible_brands
+			}],
+			mdat: [{
+				_rawData: stream.getBytes(stream.tell(), 0)
+			}],
+			moov: [{
+				atoms: moovAtoms
+			}]
+		};
+        
+        var isAppendToPreviousFiles = false;
+        
         if (isLiveStream) {
-            // For initialization segment according to BMFF
             duration = 0;
-            stblAtoms.stts[0].entries = [];
-            stblAtoms.stsc[0].entries = [];
-            stblAtoms.stsz[0].sample_count = 0;
-            stblAtoms.stsz[0].sample_sizes = [];
-            stblAtoms.stco[0].entries = [];
-            delete stblAtoms.stss;
-            delete stblAtoms.ctts;
             
-            if (audioSize > 0) {
-                audioStblAtoms.stts[0].entries = [];
-                audioStblAtoms.stsc[0].entries = [];
-                audioStblAtoms.stsz[0].sample_count = 0;
-                audioStblAtoms.stsz[0].sample_sizes = [];
-                audioStblAtoms.stco[0].entries = [];
+            delete mp4File.mdat;
+
+            if (videoInfo.isCreatedInitializationSegment) {
+        		isAppendToPreviousFiles = true;
+            	delete mp4File.ftyp;
+            	delete mp4File.moov;
+            	videoInfo.sequenceNumber = 0;
+            } else {
+	            // For initialization segment according to BMFF
+	            compatible_brands.push('dash');
+	            stblAtoms.stts[0].entries = [];
+	            stblAtoms.stsc[0].entries = [];
+	            stblAtoms.stsz[0].sample_count = 0;
+	            stblAtoms.stsz[0].sample_sizes = [];
+	            stblAtoms.stco[0].entries = [];
+	            delete stblAtoms.stss;
+	            delete stblAtoms.ctts;
+	            
+	            if (audioSize > 0) {
+	                audioStblAtoms.stts[0].entries = [];
+	                audioStblAtoms.stsc[0].entries = [];
+	                audioStblAtoms.stsz[0].sample_count = 0;
+	                audioStblAtoms.stsz[0].sample_sizes = [];
+	                audioStblAtoms.stco[0].entries = [];
+	            }
+	            
+	            moovAtoms.mvex = {
+	                atoms: {
+	                    trex: [{
+	                        track_ID: 1,
+	                        default_sample_description_index: 1,
+	                        default_sample_duration: videoInfo.defaultSampleDuration,
+	                        default_sample_size: sizes[0],
+	                        default_sample_flags: 0
+	                    }]
+	                }};
+	            
+	            if (audioSize > 0) {
+	                moovAtoms.mvex.atoms.trex.push({
+	                    track_ID: 2,
+	                    default_sample_description_index: 1,
+	                    default_sample_duration: videoInfo.defaultSampleDuration,
+	                    default_sample_size: sizes[0],
+	                    default_sample_flags: 0
+	                });
+	            }
             }
+            
+            // TODO
+            mp4File.moof = {
+            	atoms: {
+            		mfhd: [{
+            			sequence_number: ++videoInfo.sequenceNumber
+            		}],
+            		traf: {
+            			atoms: {
+            				tfhd: [{
+            					flags: 131072,
+            					track_ID: 1
+            				}]
+            			}
+            		}
+            	}
+            };
         }
 		
-		var trak = [{
-			atoms: {
-				tkhd: [{
-					version: 0,
-					flags: 15,
-					track_ID: 1,
-					duration: duration,
-					layer: 0,
-					alternate_group: 0,
-					volume: 1,
-					matrix: {
-						a: 1, b: 0, x: 0,
-						c: 0, d: 1, y: 0,
-						u: 0, v: 0, w: 1
-					},
-					dimensions: {
-						horz: videoInfo.spsData.width,
-						vert: videoInfo.spsData.height
-					}
-				}],
-				mdia: [{
-					atoms: {
-						mdhd: [{
-							version: 0,
-							flags: 0,
-							timescale: 90000,
-							duration: duration,
-							lang: 'und'
-						}],
-						hdlr: [{
-							version: 0,
-							flags: 0,
-							handler_type: 'vide',
-							name: 'VideoHandler'
-						}],
-						minf: [{
-							atoms: {
-								vmhd: [{
-									version: 0,
-									flags: 1,
-									graphicsmode: 0,
-									opcolor: {r: 0, g: 0, b: 0}
-								}],
-								dinf: [{
-									atoms: {
-										dref: [{
-											version: 0,
-											flags: 0,
-											entries: [{
-												type: 'url ',
-												version: 0,
-												flags: 1,
-												location: ''
-											}]
-										}]
-									}
-								}],
-								stbl: [{
-									atoms: stblAtoms
-								}]
-							}
-						}]
-					}
-				}]
-			}
-		}];
-
-		if (audioSize > 0) {
-			trak.push({
+		if (!isAppendToPreviousFiles) {
+			moovAtoms.trak = [{
 				atoms: {
 					tkhd: [{
 						version: 0,
 						flags: 15,
-						track_ID: 2,
+						track_ID: 1,
 						duration: duration,
 						layer: 0,
-						alternate_group: 1,
+						alternate_group: 0,
 						volume: 1,
 						matrix: {
 							a: 1, b: 0, x: 0,
@@ -509,8 +509,8 @@
 							u: 0, v: 0, w: 1
 						},
 						dimensions: {
-							horz: 0,
-							vert: 0
+							horz: videoInfo.spsData.width,
+							vert: videoInfo.spsData.height
 						}
 					}],
 					mdia: [{
@@ -520,20 +520,21 @@
 								flags: 0,
 								timescale: 90000,
 								duration: duration,
-								lang: 'eng'
+								lang: 'und'
 							}],
 							hdlr: [{
 								version: 0,
 								flags: 0,
-								handler_type: 'soun',
-								name: 'SoundHandler'
+								handler_type: 'vide',
+								name: 'VideoHandler'
 							}],
 							minf: [{
 								atoms: {
-									smhd: [{
+									vmhd: [{
 										version: 0,
-										flags: 0,
-										balance: 0
+										flags: 1,
+										graphicsmode: 0,
+										opcolor: {r: 0, g: 0, b: 0}
 									}],
 									dinf: [{
 										atoms: {
@@ -550,77 +551,104 @@
 										}
 									}],
 									stbl: [{
-										atoms: audioStblAtoms
+										atoms: stblAtoms
 									}]
 								}
 							}]
 						}
 					}]
 				}
-			});
-		};
+			}];
+	
+			if (audioSize > 0) {
+				moovAtoms.trak.push({
+					atoms: {
+						tkhd: [{
+							version: 0,
+							flags: 15,
+							track_ID: 2,
+							duration: duration,
+							layer: 0,
+							alternate_group: 1,
+							volume: 1,
+							matrix: {
+								a: 1, b: 0, x: 0,
+								c: 0, d: 1, y: 0,
+								u: 0, v: 0, w: 1
+							},
+							dimensions: {
+								horz: 0,
+								vert: 0
+							}
+						}],
+						mdia: [{
+							atoms: {
+								mdhd: [{
+									version: 0,
+									flags: 0,
+									timescale: 90000,
+									duration: duration,
+									lang: 'eng'
+								}],
+								hdlr: [{
+									version: 0,
+									flags: 0,
+									handler_type: 'soun',
+									name: 'SoundHandler'
+								}],
+								minf: [{
+									atoms: {
+										smhd: [{
+											version: 0,
+											flags: 0,
+											balance: 0
+										}],
+										dinf: [{
+											atoms: {
+												dref: [{
+													version: 0,
+													flags: 0,
+													entries: [{
+														type: 'url ',
+														version: 0,
+														flags: 1,
+														location: ''
+													}]
+												}]
+											}
+										}],
+										stbl: [{
+											atoms: audioStblAtoms
+										}]
+									}
+								}]
+							}
+						}]
+					}
+				});
+			};
+		}
         
-        var compatible_brands = ['isom', 'iso2', 'avc1', 'mp41'];
-        
-        var moovAtoms = {
-            mvhd: [{
-                version: 0,
-                flags: 0,
-                creation_time: creationTime,
-                modification_time: creationTime,
-                timescale: 90000,
-                duration: duration,
-                rate: 1,
-                volume: 1,
-                matrix: {
-                    a: 1, b: 0, x: 0,
-                    c: 0, d: 1, y: 0,
-                    u: 0, v: 0, w: 1
-                },
-                next_track_ID: 2
-            }],
-            trak: trak
-        };
-        
-        if (isLiveStream) {
-            compatible_brands.push('dash');
-            moovAtoms.mvex = {
-                atoms: {
-                    trex: [{
-                        track_ID: 1,
-                        default_sample_description_index: 1,
-                        default_sample_duration: videoInfo.defaultSampleDuration,
-                        default_sample_size: sizes[0],
-                        default_sample_flags: 0
-                    }]
-                }};
-            
-            if (audioSize > 0) {
-                moovAtoms.mvex.atoms.trex.push({
-                    track_ID: 2,
-                    default_sample_description_index: 1,
-                    default_sample_duration: videoInfo.defaultSampleDuration,
-                    default_sample_size: sizes[0],
-                    default_sample_flags: 0
-                });
-            }
-        }
-		
 		var creationTime = new Date();
 
-		mp4.write('File', {
-			ftyp: [{
-				major_brand: 'isom',
-				minor_version: 512,
-				compatible_brands: compatible_brands
-			}],
-			mdat: [{
-				_rawData: stream.getBytes(stream.tell(), 0)
-			}],
-			moov: [{
-				atoms: moovAtoms
-			}]
-		});
+        moovAtoms.mvhd = [{
+            version: 0,
+            flags: 0,
+            creation_time: creationTime,
+            modification_time: creationTime,
+            timescale: 90000,
+            duration: duration,
+            rate: 1,
+            volume: 1,
+            matrix: {
+                a: 1, b: 0, x: 0,
+                c: 0, d: 1, y: 0,
+                u: 0, v: 0, w: 1
+            },
+            next_track_ID: 2
+        }];
+        
+		mp4.write('File', mp4File);
 		
 		return mp4.slice(0, mp4.tell());
 	};
