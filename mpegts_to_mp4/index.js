@@ -172,8 +172,6 @@
 		
 		// calculating PTS/DTS differences and collecting keyframes
         
-        var isUniformSampleDuration = true;
-		
 		for (var i = 0, length = samples.length - 1; i < length; i++) {
 			var next = samples[i + 1];
 			sizes.push(next.offset - current.offset);
@@ -220,8 +218,10 @@
 			}
 		}
 		
+        var sttsEntries = dtsDiffs;
+        
 		if (dtsDiffsSame) {
-			dtsDiffs = [{first_chunk: 1, sample_count: sizes.length, sample_delta: dtsDiffs[0].sample_delta}];
+			sttsEntries = [{first_chunk: 1, sample_count: sizes.length, sample_delta: dtsDiffs[0].sample_delta}];
 		}
 
 		// building audio metadata
@@ -280,7 +280,7 @@
             stts: [{
                 version: 0,
                 flags: 0,
-                entries: dtsDiffs
+                entries: sttsEntries
             }],
             stss: [{
                 version: 0,
@@ -351,7 +351,7 @@
                                         stream_type: 'audio',
                                         upstream_flag: 0,
                                         buffer_size: 0,
-                                        maxBitrate: maxBitrate
+                                        maxBitrate: maxBitrate,
                                         avgBitrate: avgBitrate
                                     },
                                     {
@@ -474,6 +474,21 @@
 	            }
             }
             
+            var trunSamplesFlags = 0xE1;
+            if (!dtsDiffsSame) {
+                trunSamplesFlags |= 0x100;
+            }
+            
+            var trunSamples = new Array(samples.length);
+            for (var i = 0; i < samples.length - 1; ++i) {
+                trunSamples[i] = {
+                    sample_duration: dtsDiffs[i].sample_delta,
+                    sample_size: sizes[i],
+                    sample_flags: ,
+                    sample_composition_time_offset:
+                };
+            }
+            
             // TODO
             mp4File.moof = {
             	atoms: {
@@ -483,11 +498,21 @@
             		traf: {
             			atoms: {
             				tfhd: [{
-            					flags: 131072,
+            					flags: 0x20000,
             					track_ID: 1
-            				}]
+            				}],
+                            // NOTE: may be added for optimization
+                            //tfdt: [{
+                            //    atoms: {
+                            //        version: 0,
+                            //        base_media_decode_time: ?
+                            //    }
+                            //}],
+                            trun: [{
+                                flags: 0xE1
+                            }]
             			}
-            		}
+            		},
             	}
             };
         }
@@ -626,7 +651,7 @@
 						}]
 					}
 				});
-			};
+			}
 		}
         
 		var creationTime = new Date();

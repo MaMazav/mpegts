@@ -261,11 +261,21 @@
         
         tfhd: ['extend', 'FullBox', {
             track_ID: 'uint32',
-            base_data_offset: 'uint64',
-            sample_description_index: 'uint32',
-            default_sample_duration: 'uint32',
-            default_sample_size: 'uint32',
-            default_sample_flags: 'uint32'
+            base_data_offset: ['if', function () { 
+                    return this.binary.getContext('flags').flags & 0x1;
+                }, 'int64'],
+            sample_description_index: ['if', function () { 
+                    return this.binary.getContext('flags').flags & 0x2;
+                }, 'int32'],
+            default_sample_duration: ['if', function () { 
+                    return this.binary.getContext('flags').flags & 0x8;
+                }, 'int32'],
+            default_sample_size: ['if', function () { 
+                    return this.binary.getContext('flags').flags & 0x10;
+                }, 'int32'],
+            default_sample_flags: ['if', function () { 
+                    return this.binary.getContext('flags').flags & 0x20;
+                }, 'int32']
         }],
         
         tfdt: ['extend', 'FullBox', {
