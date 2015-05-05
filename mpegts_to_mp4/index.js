@@ -57,13 +57,13 @@
         var pendingStreamLength = (videoInfo.pendingStream || {}).byteLength || 0;
 		stream = new jDataView(stream.byteLength + pendingStreamLength);
         if (pendingStreamLength > 0) {
-            stream.writeBytes(videoInfo.pendingStream.getBytes(0, videoInfo.pendingStream.byteLength));
+            stream.writeBytes(videoInfo.pendingStream.getBytes(videoInfo.pendingStream.byteLength, 0));
         }
         
         var pendingAudioStreamLength = (videoInfo.pendingAudioStream || {}).byteLength || 0;
         var audioStream = new jBinary(stream.byteLength + pendingAudioStreamLength, ADTS);
         if (pendingAudioStreamLength > 0) {
-            audioStream.writeBytes(videoInfo.pendingAudioStream.getBytes(0, videoInfo.pendingAudioStream.byteLength));
+            audioStream.writeBytes(videoInfo.pendingAudioStream.getBytes(videoInfo.pendingAudioStream.byteLength, 0));
         }
 		
 		while (pesStream.tell() < pesStream.view.byteLength) {
@@ -223,13 +223,20 @@
 		if (dtsDiffsSame) {
 			sttsEntries = [{first_chunk: 1, sample_count: sizes.length, sample_delta: dtsDiffs[0].sample_delta}];
 		}
-
+        
 		// building audio metadata
 
 		var audioStart = stream.tell(),
 			audioSize = audioStream.tell(),
 			audioSizes = [],
 			maxAudioSize = 0;
+        
+        isLiveStream = false;
+        
+        if (isLiveStream) {
+            // TODO: Remove it when audio is supported on live stream
+            audioSize = 0;
+        }
 			
 		audioStream.seek(0);
 		
@@ -241,6 +248,11 @@
 			}
 			stream.writeBytes(videoInfo.audioHeader.data);
 		}
+
+        var audioSttsEntries = [{
+            sample_count: audioSizes.length,
+            sample_delta: Math.round(duration / audioSizes.length)
+        }];
 
 		// generating resulting MP4
 
@@ -376,10 +388,7 @@
                 stts: [{
                     version: 0,
                     flags: 0,
-                    entries: [{
-                        sample_count: audioSizes.length,
-                        sample_delta: Math.round(duration / audioSizes.length)
-                    }]
+                    entries: audioSttsEntries
                 }],
                 stsc: [{
                     version: 0,
@@ -405,37 +414,95 @@
             };
         }
         
-        var compatible_brands = ['isom', 'iso2', 'avc1', 'mp41'];
-        
-        var mp4File = {
-			ftyp: [{
-				major_brand: 'isom',
-				minor_version: 512,
-				compatible_brands: compatible_brands
-			}],
-			mdat: [{
-				_rawData: stream.getBytes(stream.tell(), 0)
-			}],
-			moov: [{
-				atoms: moovAtoms
-			}]
-		};
+        var mp4File;
         
         var isAppendToPreviousFiles = false;
         
-        if (isLiveStream) {
+        var mdat = [{
+            _rawData: stream.getBytes(stream.tell(), 0)
+        }];
+        
+        var moov = [{
+            atoms: []
+        }];
+        
+        if (!isLiveStream) {
+            mp4File = {
+                ftyp: [{
+                    major_brand: 'isom',
+                    minor_version: 512,
+                    compatible_brands: ['isom', 'iso2', 'avc1', 'mp41']
+                }],
+                mdat: mdat,
+                moov: moov
+            };
+        } else {
             duration = 0;
             
-            delete mp4File.mdat;
+            var HAS_DURATION = 0x100;
+            var HAS_SIZE = 0x200;
+            var HAS_FLAGS = 0x400;
+            var HAS_PRESENTATION_DECODE_DIFF = 0x800;
+            var trunSamplesFlags = HAS_SIZE | HAS_FLAGS | HAS_PRESENTATION_DECODE_DIFF;
+            if (!dtsDiffsSame) {
+                trunSamplesFlags |= HAS_DURATION;
+            }
+            
+            var trunSamples = new Array(samples.length);
+            for (var i = 0; i < samples.length - 1; ++i) {
+                trunSamples[i] = {
+                    sample_duration: dtsDiffs[i].sample_delta,
+                    sample_size: sizes[i],
+                    sample_flags: 0x10000, // NOTE: I don't know what it means, I think this is SampleIsDependedOnUnknown flag
+                    sample_composition_time_offset: pts_dts_Diffs[i].sample_offset
+                };
+            }
+            
+            if (audioSize > 0) {
+                // TODO: Create trunSamples array for audio
+            }
+            
+            var moof = {
+            	atoms: {
+            		mfhd: [{
+            			sequence_number: ++videoInfo.sequenceNumber
+            		}],
+            		traf: [{
+            			atoms: {
+            				tfhd: [{
+            					flags: 0x20000, // NOTE: I don't know what it means, this bit not mentioned in standard
+            					track_ID: 1
+            				}],
+                            // NOTE: may be added for optimization
+                            //tfdt: [{
+                            //    atoms: {
+                            //        version: 0,
+                            //        base_media_decode_time: ?
+                            //    }
+                            //}],
+                            trun: [{
+                                flags: trunSamplesFlags,
+                                sample_count: trunSamples.length,
+                                samples_array: trunSamples
+                            }]
+            			}
+            		}],
+            	}
+            };
 
             if (videoInfo.isCreatedInitializationSegment) {
+                mp4File = {};
+                
         		isAppendToPreviousFiles = true;
-            	delete mp4File.ftyp;
-            	delete mp4File.moov;
-            	videoInfo.sequenceNumber = 0;
+                
+                mp4File = {
+                    moof: moof,
+                    mdat: mdat
+                };
             } else {
-	            // For initialization segment according to BMFF
-	            compatible_brands.push('dash');
+            	videoInfo.sequenceNumber = 0;
+
+                // For initialization segment according to BMFF
 	            stblAtoms.stts[0].entries = [];
 	            stblAtoms.stsc[0].entries = [];
 	            stblAtoms.stsz[0].sample_count = 0;
@@ -452,7 +519,7 @@
 	                audioStblAtoms.stco[0].entries = [];
 	            }
 	            
-	            moovAtoms.mvex = {
+	            moov[0].atoms.mvex = {
 	                atoms: {
 	                    trex: [{
 	                        track_ID: 1,
@@ -464,7 +531,7 @@
 	                }};
 	            
 	            if (audioSize > 0) {
-	                moovAtoms.mvex.atoms.trex.push({
+	                moov[0].atoms.mvex.atoms.trex.push({
 	                    track_ID: 2,
 	                    default_sample_description_index: 1,
 	                    default_sample_duration: videoInfo.defaultSampleDuration,
@@ -472,53 +539,22 @@
 	                    default_sample_flags: 0
 	                });
 	            }
-            }
-            
-            var trunSamplesFlags = 0xE1;
-            if (!dtsDiffsSame) {
-                trunSamplesFlags |= 0x100;
-            }
-            
-            var trunSamples = new Array(samples.length);
-            for (var i = 0; i < samples.length - 1; ++i) {
-                trunSamples[i] = {
-                    sample_duration: dtsDiffs[i].sample_delta,
-                    sample_size: sizes[i],
-                    sample_flags: ,
-                    sample_composition_time_offset:
+                
+                mp4File = {
+                    ftyp: [{
+                        major_brand: 'isom',
+                        minor_version: 512,
+                        compatible_brands: ['isom', 'iso2', 'avc1', 'mp41', 'dash']
+                    }],
+                    moov: moov,
+                    moof: moof,
+                    mdat: mdat
                 };
             }
-            
-            // TODO
-            mp4File.moof = {
-            	atoms: {
-            		mfhd: [{
-            			sequence_number: ++videoInfo.sequenceNumber
-            		}],
-            		traf: {
-            			atoms: {
-            				tfhd: [{
-            					flags: 0x20000,
-            					track_ID: 1
-            				}],
-                            // NOTE: may be added for optimization
-                            //tfdt: [{
-                            //    atoms: {
-                            //        version: 0,
-                            //        base_media_decode_time: ?
-                            //    }
-                            //}],
-                            trun: [{
-                                flags: 0xE1
-                            }]
-            			}
-            		},
-            	}
-            };
         }
 		
 		if (!isAppendToPreviousFiles) {
-			moovAtoms.trak = [{
+			moov[0].atoms.trak = [{
 				atoms: {
 					tkhd: [{
 						version: 0,
@@ -586,7 +622,7 @@
 			}];
 	
 			if (audioSize > 0) {
-				moovAtoms.trak.push({
+				moov[0].atoms.trak.push({
 					atoms: {
 						tkhd: [{
 							version: 0,
@@ -656,7 +692,7 @@
         
 		var creationTime = new Date();
 
-        moovAtoms.mvhd = [{
+        moov[0].atoms.mvhd = [{
             version: 0,
             flags: 0,
             creation_time: creationTime,
