@@ -13,6 +13,9 @@
     }
 }(this, function (jDataView, jBinary, MP4, H264, PES, ADTS) {
 	'use strict';
+    
+    var LIVE_MAX_FRAGMENT_SAMPLES = 50;
+    var LIVE_MIN_FRAGMENT_SAMPLES = 50;
 
 	return function (mpegts, liveStreamContext) {
         if (liveStreamContext) {
@@ -49,7 +52,8 @@
         
         videoInfo.oldSpsData = videoInfo.spsData;
         videoInfo.oldPps = videoInfo.pps;
-        videoInfo.dtsChangesCount = videoInfo.dtsChangesCount || 0;
+        var dtsChangesCount = videoInfo.pendingDtsChangesCount || 0;
+        videoInfo.pendingDtsChangesCount = 0;
         
         videoInfo.spsData = null;
         videoInfo.pps = null;
@@ -82,16 +86,21 @@
 				samples.push(curSample);
 
                 if (dts !== samples[lastDtsChangeSample].dts) {
-                    ++videoInfo.dtsChangesCount;
-                    lastDtsChangeSample = samples.length;
-                    lastDtsChangeOffset = stream.tell();
-                    lastDtsChangeAudioOffset = audioStream.tell();
+                    if (dtsChangesCount >= LIVE_MAX_FRAGMENT_SAMPLES) {
+                        // TODO: What happens if also pendingDtsChangesCount >= LIVE_MAX_FRAGMENT_SAMPLES?
+                        ++videoInfo.pendingDtsChangesCount;
+                    } else {
+                        ++dtsChangesCount;
+                        lastDtsChangeSample = samples.length;
+                        lastDtsChangeOffset = stream.tell();
+                        lastDtsChangeAudioOffset = audioStream.tell();
 
-                    videoInfo.spsData = videoInfo.spsData || videoInfo.pendingSpsData;
-                    videoInfo.pps = videoInfo.pps  || videoInfo.pendingPps;
-                    
-                    videoInfo.pendingSpsData = null;
-                    videoInfo.pendingPps = null;
+                        videoInfo.spsData = videoInfo.spsData || videoInfo.pendingSpsData;
+                        videoInfo.pps = videoInfo.pps  || videoInfo.pendingPps;
+
+                        videoInfo.pendingSpsData = null;
+                        videoInfo.pendingPps = null;
+                    }
                 }
 				
 				// collecting info from H.264 NAL units
@@ -139,7 +148,8 @@
         videoInfo.pps = videoInfo.pps || videoInfo.oldPps || videoInfo.pendingPps;
         
         if (isLiveStream) {
-            if (videoInfo.dtsChangesCount < 3 || !videoInfo.spsData || !videoInfo.pps) {
+            if (dtsChangesCount < LIVE_MIN_FRAGMENT_SAMPLES || !videoInfo.spsData || !videoInfo.pps) {
+                videoInfo.pendingDtsChangesCount = dtsChangesCount;
                 videoInfo.pendingSamples = samples;
                 videoInfo.pendingStream = stream;
                 videoInfo.pendingAudioStream = audioStream;
@@ -150,7 +160,6 @@
                 return null;
             }
             
-            videoInfo.dtsChangesCount = 0;
             videoInfo.pendingSamples = samples.slice(lastDtsChangeSample);
             videoInfo.pendingStream = stream.slice(lastDtsChangeOffset, stream.tell());
             videoInfo.pendingAudioStream = audioStream.slice(lastDtsChangeAudioOffset, audioStream.tell());
@@ -417,6 +426,25 @@
         var mp4File;
         
         var isAppendToPreviousFiles = false;
+		var creationTime = new Date();
+
+        var mvhd = [{
+            version: 0,
+            flags: 0,
+            creation_time: creationTime,
+            modification_time: creationTime,
+            timescale: 90000,
+            duration: duration,
+            rate: 1,
+            volume: 1,
+            matrix: {
+                a: 1, b: 0, x: 0,
+                c: 0, d: 1, y: 0,
+                u: 0, v: 0, w: 1
+            },
+            next_track_ID: 2
+        }];
+        
         
         var mdat = [{
             _rawData: stream.getBytes(stream.tell(), 0)
@@ -436,6 +464,8 @@
                 mdat: mdat,
                 moov: moov
             };
+            
+            moov[0].atoms.mvhd = mvhd;
         } else {
             duration = 0;
             
@@ -503,6 +533,7 @@
             	videoInfo.sequenceNumber = 0;
 
                 // For initialization segment according to BMFF
+                moov[0].atoms.mvhd = mvhd;
 	            stblAtoms.stts[0].entries = [];
 	            stblAtoms.stsc[0].entries = [];
 	            stblAtoms.stsz[0].sample_count = 0;
@@ -689,25 +720,6 @@
 				});
 			}
 		}
-        
-		var creationTime = new Date();
-
-        moov[0].atoms.mvhd = [{
-            version: 0,
-            flags: 0,
-            creation_time: creationTime,
-            modification_time: creationTime,
-            timescale: 90000,
-            duration: duration,
-            rate: 1,
-            volume: 1,
-            matrix: {
-                a: 1, b: 0, x: 0,
-                c: 0, d: 1, y: 0,
-                u: 0, v: 0, w: 1
-            },
-            next_track_ID: 2
-        }];
         
 		mp4.write('File', mp4File);
 		
