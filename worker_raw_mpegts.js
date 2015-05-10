@@ -22,9 +22,27 @@ require.config({
 	}
 });
 
-require(['async', 'jbinary', './mpegts_to_mp4/mpegts', './mpegts_to_mp4/index', 'consoleTime', 'consoleWorker'],
-	function (async, jBinary, MPEGTS, mpegts_to_mp4) {
+require(['async', 'jbinary', './mpegts_to_mp4/mpegts', './mpegts_to_mp4/index', './mpegts_to_mp4/mp4.js', 'consoleTime', 'consoleWorker'],
+	function (async, jBinary, MPEGTS, mpegts_to_mp4, MP4) {
         var streamContext = {};
+        var index = 0;
+        var fileIndex = 0;
+    
+        // TODO remove when finishing debug
+        if (false) {
+            jBinary.load('400k00001_dashinit.mp4', MP4, function (err, mp4Binary) {
+                if (err) return;
+
+                var mp4 = mp4Binary.read('File');
+            
+                postMessage({
+                    type: 'saveFile',
+                    fileType: 'text/json',
+                    bytes: JSON.stringify(mp4),
+                    fileName: 'mp4_json_' + (fileIndex++) + '.json'
+                });
+            });
+        }
         
 		addEventListener('message', function (event) {
 			// processing received sources one by one
@@ -39,7 +57,28 @@ require(['async', 'jbinary', './mpegts_to_mp4/mpegts', './mpegts_to_mp4/index', 
                     
                     if (mp4 !== null) {
                         console.timeEnd('convert');
-
+                        
+                        // TODO remove when finishing debug
+                        if (false) {
+                            postMessage({
+                                type: 'saveFile',
+                                fileType: 'application/octet-binary',
+                                bytes: mp4.view.getBytes(mp4.view.byteLength, 0),
+                                fileName: 'serialized_video_' + (fileIndex++) + '.mp4'
+                            });
+                        }
+                        
+                        if (false) {
+                            mp4.seek(0);
+                            var mp4Object = mp4.read('File');
+                            postMessage({
+                                type: 'saveFile',
+                                fileType: 'text/json',
+                                bytes: JSON.stringify(mp4Object),
+                                fileName: 'mp4_json_' + (fileIndex++) + '.json'
+                            });
+                        }
+                        
                         postMessage({
                             type: 'video',
                             index: msg.index,

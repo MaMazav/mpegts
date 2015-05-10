@@ -49,6 +49,11 @@
                     getMore();
                 }
                 return;
+                
+            case 'saveFile':
+                var blob = new Blob([data.bytes], { type: data.fileType });
+                saveAs(blob, data.fileName);
+                break;
 
 			// got new converted MP4 video data
 			case 'video':

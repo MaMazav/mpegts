@@ -148,21 +148,27 @@
         videoInfo.pps = videoInfo.pps || videoInfo.oldPps || videoInfo.pendingPps;
         
         if (isLiveStream) {
-            if (dtsChangesCount < LIVE_MIN_FRAGMENT_SAMPLES || !videoInfo.spsData || !videoInfo.pps) {
+            var isEnoughData = dtsChangesCount >= LIVE_MIN_FRAGMENT_SAMPLES && videoInfo.spsData && videoInfo.pps;
+            if (isEnoughData) {
+                videoInfo.pendingDtsChangesCount = 0;
+            } else {
                 videoInfo.pendingDtsChangesCount = dtsChangesCount;
-                videoInfo.pendingSamples = samples;
-                videoInfo.pendingStream = stream;
-                videoInfo.pendingAudioStream = audioStream;
                 
                 videoInfo.pendingSpsData = videoInfo.spsData || videoInfo.pendingSpsData;
                 videoInfo.pendingPps = videoInfo.pps || videoInfo.pendingPps;
                 
-                return null;
+                lastDtsChangeSample = 0;
+                lastDtsChangeOffset = 0;
+                lastDtsChangeAudioOffset = 0;
             }
             
             videoInfo.pendingSamples = samples.slice(lastDtsChangeSample);
             videoInfo.pendingStream = stream.slice(lastDtsChangeOffset, stream.tell());
             videoInfo.pendingAudioStream = audioStream.slice(lastDtsChangeAudioOffset, audioStream.tell());
+            
+            if (!isEnoughData) {
+                return null;
+            }
             
             samples.length = lastDtsChangeSample;
             stream.seek(lastDtsChangeOffset);
@@ -239,8 +245,6 @@
 			audioSize = audioStream.tell(),
 			audioSizes = [],
 			maxAudioSize = 0;
-        
-        isLiveStream = false;
         
         if (isLiveStream) {
             // TODO: Remove it when audio is supported on live stream
@@ -467,6 +471,7 @@
             
             moov[0].atoms.mvhd = mvhd;
         } else {
+            var fragment_duration = duration;
             duration = 0;
             
             var HAS_DURATION = 0x100;
@@ -478,7 +483,7 @@
                 trunSamplesFlags |= HAS_DURATION;
             }
             
-            var trunSamples = new Array(samples.length);
+            var trunSamples = new Array(samples.length - 1);
             for (var i = 0; i < samples.length - 1; ++i) {
                 trunSamples[i] = {
                     sample_duration: dtsDiffs[i].sample_delta,
@@ -492,7 +497,7 @@
                 // TODO: Create trunSamples array for audio
             }
             
-            var moof = {
+            var moof = [{
             	atoms: {
             		mfhd: [{
             			sequence_number: ++videoInfo.sequenceNumber
@@ -518,7 +523,15 @@
             			}
             		}],
             	}
-            };
+            }];
+            
+            var sidx = [{
+                version: 0,
+                flags: 0,
+                earliest_composition_time: 1,
+                reference_count: 0,
+                references: []
+            }];
 
             if (videoInfo.isCreatedInitializationSegment) {
                 mp4File = {};
@@ -527,7 +540,8 @@
                 
                 mp4File = {
                     moof: moof,
-                    mdat: mdat
+                    mdat: mdat,
+                    sidx: sidx
                 };
             } else {
             	videoInfo.sequenceNumber = 0;
@@ -550,8 +564,12 @@
 	                audioStblAtoms.stco[0].entries = [];
 	            }
 	            
-	            moov[0].atoms.mvex = {
+	            moov[0].atoms.mvex = [{
 	                atoms: {
+                        mehd: [{
+                            version: 0,
+                            fragment_duration: fragment_duration
+                        }],
 	                    trex: [{
 	                        track_ID: 1,
 	                        default_sample_description_index: 1,
@@ -559,7 +577,8 @@
 	                        default_sample_size: sizes[0],
 	                        default_sample_flags: 0
 	                    }]
-	                }};
+	                }
+                }];
 	            
 	            if (audioSize > 0) {
 	                moov[0].atoms.mvex.atoms.trex.push({
@@ -579,7 +598,8 @@
                     }],
                     moov: moov,
                     moof: moof,
-                    mdat: mdat
+                    mdat: mdat,
+                    sidx: sidx
                 };
             }
         }

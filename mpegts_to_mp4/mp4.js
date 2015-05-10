@@ -218,8 +218,8 @@
 			profileIndication: 'uint8',
 			profileCompatibility: 'uint8',
 			levelIndication: 'uint8',
-			_reserved: ['const', 6, -1],
-			lengthSizeMinusOne: 2,
+            _reserved: ['const', 6, -1],
+            lengthSizeMinusOne: 2,
 			_reserved2: ['const', 3, -1],
 			seqParamSets: ['ParamSets', 5],
 			pictParamSets: ['ParamSets', 'uint8']
@@ -681,6 +681,10 @@
 		mehd: ['extend', 'FullBox', {
 			fragment_duration: 'FBUint'
 		}],
+        
+        trep: ['extend', 'FullBox', {
+            track_ID: 'uint32'
+        }],
 
 		esds_section: ['extend', {
 			descriptor_type: 'uint8',
