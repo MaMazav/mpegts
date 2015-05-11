@@ -14,8 +14,9 @@
 }(this, function (jDataView, jBinary, MP4, H264, PES, ADTS) {
 	'use strict';
     
-    var LIVE_MAX_FRAGMENT_SAMPLES = 50;
-    var LIVE_MIN_FRAGMENT_SAMPLES = 50;
+    var LIVE_MAX_FRAGMENT_SAMPLES = 90;
+    var LIVE_MIN_FRAGMENT_SAMPLES = 90;
+    var MAX_CONTAINER_OVERHEAD_BYTES = 50000;
 
 	return function (mpegts, liveStreamContext) {
         if (liveStreamContext) {
@@ -45,7 +46,7 @@
 		}
 		
 		var pesStream = new jBinary(stream.slice(0, stream.tell()), PES),
-			samples = [],
+			samples = videoInfo.pendingSamples || [],
             lastDtsChangeSample = 0,
             lastDtsChangeOffset = 0,
             lastDtsChangeAudioOffset = 0;
@@ -59,7 +60,7 @@
         videoInfo.pps = null;
 
         var pendingStreamLength = (videoInfo.pendingStream || {}).byteLength || 0;
-		stream = new jDataView(stream.byteLength + pendingStreamLength);
+		stream = new jDataView(stream.byteLength + pendingStreamLength + MAX_CONTAINER_OVERHEAD_BYTES);
         if (pendingStreamLength > 0) {
             stream.writeBytes(videoInfo.pendingStream.getBytes(videoInfo.pendingStream.byteLength, 0));
         }
@@ -86,7 +87,7 @@
 				samples.push(curSample);
 
                 if (dts !== samples[lastDtsChangeSample].dts) {
-                    if (dtsChangesCount >= LIVE_MAX_FRAGMENT_SAMPLES) {
+                    if (false && dtsChangesCount >= LIVE_MAX_FRAGMENT_SAMPLES) {
                         // TODO: What happens if also pendingDtsChangesCount >= LIVE_MAX_FRAGMENT_SAMPLES?
                         ++videoInfo.pendingDtsChangesCount;
                     } else {
@@ -245,6 +246,8 @@
 			audioSize = audioStream.tell(),
 			audioSizes = [],
 			maxAudioSize = 0;
+        
+        isLiveStream = true;
         
         if (isLiveStream) {
             // TODO: Remove it when audio is supported on live stream

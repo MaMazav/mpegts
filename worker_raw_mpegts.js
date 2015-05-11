@@ -30,7 +30,7 @@ require(['async', 'jbinary', './mpegts_to_mp4/mpegts', './mpegts_to_mp4/index', 
     
         // TODO remove when finishing debug
         if (false) {
-            jBinary.load('400k00001_dashinit.mp4', MP4, function (err, mp4Binary) {
+            jBinary.load('400k00001_after_ffmpeg.mp4', MP4, function (err, mp4Binary) {
                 if (err) return;
 
                 var mp4 = mp4Binary.read('File');
@@ -75,7 +75,7 @@ require(['async', 'jbinary', './mpegts_to_mp4/mpegts', './mpegts_to_mp4/index', 
                                 type: 'saveFile',
                                 fileType: 'text/json',
                                 bytes: JSON.stringify(mp4Object),
-                                fileName: 'mp4_json_' + (fileIndex++) + '.json'
+                                fileName: 'new_mp4_json_' + (fileIndex++) + '.json'
                             });
                         }
                         
