@@ -30,7 +30,7 @@ require(['async', 'jbinary', './mpegts_to_mp4/mpegts', './mpegts_to_mp4/index', 
     
         // TODO remove when finishing debug
         if (false) {
-            jBinary.load('400k00001_after_ffmpeg.mp4', MP4, function (err, mp4Binary) {
+            jBinary.load('facebook-paper.mp4', MP4, function (err, mp4Binary) {
                 if (err) return;
 
                 var mp4 = mp4Binary.read('File');
@@ -83,7 +83,8 @@ require(['async', 'jbinary', './mpegts_to_mp4/mpegts', './mpegts_to_mp4/index', 
                             type: 'video',
                             index: msg.index,
                             original: msg.url,
-                            url: mp4.toURI('video/mp4')
+                            url: mp4.toURI('video/mp4'),
+                            isFirstSegment: streamContext.isFirstSegment
                         });
                     } else {
                         console.timeEnd('not enough data to convert');

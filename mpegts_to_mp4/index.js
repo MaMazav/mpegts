@@ -247,8 +247,6 @@
 			audioSizes = [],
 			maxAudioSize = 0;
         
-        isLiveStream = true;
-        
         if (isLiveStream) {
             // TODO: Remove it when audio is supported on live stream
             audioSize = 0;
@@ -537,7 +535,7 @@
             }];
 
             if (videoInfo.isCreatedInitializationSegment) {
-                mp4File = {};
+                videoInfo.isFirstSegment = false;
                 
         		isAppendToPreviousFiles = true;
                 
@@ -547,6 +545,8 @@
                     sidx: sidx
                 };
             } else {
+                videoInfo.isFirstSegment = true;
+                videoInfo.isCreatedInitializationSegment = true;
             	videoInfo.sequenceNumber = 0;
 
                 // For initialization segment according to BMFF
