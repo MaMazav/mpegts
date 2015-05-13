@@ -3,10 +3,15 @@
 var MpegtsWebsocketReciever = (function MpegtsWebsocketRecieverClosure() {
     function MpegtsWebsocketReciever(url, segmenter) {
         this._isSocketInitialized = false;
+        this._newDataCallback = null;
         this._websocket = new WebSocket(url);
         this._segmenter = segmenter;
         this._websocket.onopen = this._onOpen.bind(this);
     }
+    
+    MpegtsWebsocketReciever.prototype.setNewDataCallback = function setNewDataCallback(callback) {
+        this._newDataCallback = callback;
+    };
     
     MpegtsWebsocketReciever.prototype._onOpen = function onOpen() {
         this._websocket.binaryType = 'arraybuffer';
@@ -31,10 +36,24 @@ var MpegtsWebsocketReciever = (function MpegtsWebsocketRecieverClosure() {
             }
             
             this._isSocketInitialized = true;
+            
+            self.addEventListener('beforeunload', this._onBeforeUnload.bind(this));
+            
             message = message.subarray(7);
         }
         
         this._segmenter.pushData(message);
+        
+        if (this._newDataCallback) {
+            this._newDataCallback();
+        }
+    };
+    
+    MpegtsWebsocketReciever.prototype._onBeforeUnload = function onBeforeUnload() {
+        if (this._isSocketInitialized) {
+            this._isSocketInitialized = false;
+            this._websocket.close();
+        }
     };
     
     return MpegtsWebsocketReciever;
