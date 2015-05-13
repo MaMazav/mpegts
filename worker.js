@@ -39,7 +39,7 @@ require(['async', 'jbinary', './mpegts_to_mp4/mpegts', './mpegts_to_mp4/index', 
 					console.timeEnd('convert');
 					
                         // TODO remove when finishing debug
-                        if (true) {
+                        if (false) {
                             postMessage({
                                 type: 'saveFile',
                                 fileType: 'application/octet-binary',

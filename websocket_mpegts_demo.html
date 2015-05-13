@@ -2,25 +2,50 @@
 
 <head>
     <title>MSE realtime websocket streaming</title>
+    
+    <style>
+table {
+    background-color: red;
+}
+        
+td {
+    min-width: 20px;
+    min-height: 20px;
+}
+        
+#tdVideo {
+    background-color: cyan;
+}
+    </style>
 </head>
 
 <body>
-    <video controls id="demoVideo" autoplay></video>
+    <table>
+        <tr><td colspan="3"><br></td></tr>
+        <tr>
+            <td></td>
+            <td id="tdVideo"><video controls id="demoVideo" autoplay></video></td>
+            <td></td>
+        </tr>
+        <tr><td colspan="3"><br></td></tr>
+    </table>
+    
+    <br><br>
+    Choose fragment to save:
+    <select id="fragmentSelect">
+        <option value="all">All</option>
+    </select>
+    <br><br>
+    
+    <input type="button" value="Save to file..." onclick="saveToFile()"><br>
+    <input type="button" value="Save JSON to file..." onclick="saveJsonToFile()"><br>
+    <input type="button" value="Save JSON to file (add init if not exist)..." onclick="addInitAndSaveJsonToFile()">
     
     <script src="lib/require.js"></script>
-    <!--<script src="//jdataview.github.io/dist/jdataview.js"></script>
-    <script src="//jdataview.github.io/dist/jbinary.js"></script>-->
 
     <script src="mpegts_stream/client/mpegts_simple_segmenter.js"></script>
     <script src="mpegts_stream/client/mpegts_websocket_reciever.js"></script>
     <script src="mpegts_stream/client/video_buffer_appender.js"></script>
-
-    <!--<script src="mpegts_to_mp4/adts.js"></script>
-    <script src="mpegts_to_mp4/h264.js"></script>
-    <script src="mpegts_to_mp4/index.js"></script>
-    <script src="mpegts_to_mp4/mp4.js"></script>
-    <script src="mpegts_to_mp4/mpegts.js"></script>
-    <script src="mpegts_to_mp4/pes.js"></script>-->
     
     <script type="application/javascript" src="http://eligrey.com/demos/FileSaver.js/FileSaver.js"></script>
     <script src="websocket_mpegts_demo.js"></script>

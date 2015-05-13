@@ -36,6 +36,9 @@ var MpegtsWebsocketReciever = (function MpegtsWebsocketRecieverClosure() {
             }
             
             this._isSocketInitialized = true;
+            
+            self.addEventListener('beforeunload', this._onBeforeUnload.bind(this));
+            
             message = message.subarray(7);
         }
         
@@ -43,6 +46,13 @@ var MpegtsWebsocketReciever = (function MpegtsWebsocketRecieverClosure() {
         
         if (this._newDataCallback) {
             this._newDataCallback();
+        }
+    };
+    
+    MpegtsWebsocketReciever.prototype._onBeforeUnload = function onBeforeUnload() {
+        if (this._isSocketInitialized) {
+            this._isSocketInitialized = false;
+            this._websocket.close();
         }
     };
     

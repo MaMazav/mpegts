@@ -14,8 +14,7 @@
 }(this, function (jDataView, jBinary, MP4, H264, PES, ADTS) {
 	'use strict';
     
-    var LIVE_MAX_FRAGMENT_SAMPLES = 90;
-    var LIVE_MIN_FRAGMENT_SAMPLES = 90;
+    var LIVE_MIN_FRAGMENT_SAMPLES = 40;
     var MAX_CONTAINER_OVERHEAD_BYTES = 50000;
 
 	return function (mpegts, liveStreamContext) {
@@ -87,21 +86,16 @@
 				samples.push(curSample);
 
                 if (dts !== samples[lastDtsChangeSample].dts) {
-                    if (false && dtsChangesCount >= LIVE_MAX_FRAGMENT_SAMPLES) {
-                        // TODO: What happens if also pendingDtsChangesCount >= LIVE_MAX_FRAGMENT_SAMPLES?
-                        ++videoInfo.pendingDtsChangesCount;
-                    } else {
-                        ++dtsChangesCount;
-                        lastDtsChangeSample = samples.length;
-                        lastDtsChangeOffset = stream.tell();
-                        lastDtsChangeAudioOffset = audioStream.tell();
+                    ++dtsChangesCount;
+                    lastDtsChangeSample = samples.length;
+                    lastDtsChangeOffset = stream.tell();
+                    lastDtsChangeAudioOffset = audioStream.tell();
 
-                        videoInfo.spsData = videoInfo.spsData || videoInfo.pendingSpsData;
-                        videoInfo.pps = videoInfo.pps  || videoInfo.pendingPps;
+                    videoInfo.spsData = videoInfo.spsData || videoInfo.pendingSpsData;
+                    videoInfo.pps = videoInfo.pps  || videoInfo.pendingPps;
 
-                        videoInfo.pendingSpsData = null;
-                        videoInfo.pendingPps = null;
-                    }
+                    videoInfo.pendingSpsData = null;
+                    videoInfo.pendingPps = null;
                 }
 				
 				// collecting info from H.264 NAL units
@@ -166,6 +160,10 @@
             videoInfo.pendingSamples = samples.slice(lastDtsChangeSample);
             videoInfo.pendingStream = stream.slice(lastDtsChangeOffset, stream.tell());
             videoInfo.pendingAudioStream = audioStream.slice(lastDtsChangeAudioOffset, audioStream.tell());
+            
+            for (var i = 0; i < videoInfo.pendingSamples.length; ++i) {
+                videoInfo.pendingSamples[i].offset -= lastDtsChangeOffset;
+            }
             
             if (!isEnoughData) {
                 return null;
@@ -569,10 +567,10 @@
 	            
 	            moov[0].atoms.mvex = [{
 	                atoms: {
-                        mehd: [{
+                        /*mehd: [{
                             version: 0,
                             fragment_duration: fragment_duration
-                        }],
+                        }],*/
 	                    trex: [{
 	                        track_ID: 1,
 	                        default_sample_description_index: 1,
