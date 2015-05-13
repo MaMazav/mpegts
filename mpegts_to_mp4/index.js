@@ -152,12 +152,12 @@
                 videoInfo.pendingSpsData = videoInfo.spsData || videoInfo.pendingSpsData;
                 videoInfo.pendingPps = videoInfo.pps || videoInfo.pendingPps;
                 
-                lastDtsChangeSample = 0;
+                lastDtsChangeSample = 1;
                 lastDtsChangeOffset = 0;
                 lastDtsChangeAudioOffset = 0;
             }
             
-            videoInfo.pendingSamples = samples.slice(lastDtsChangeSample);
+            videoInfo.pendingSamples = samples.slice(lastDtsChangeSample - 1);
             videoInfo.pendingStream = stream.slice(lastDtsChangeOffset, stream.tell());
             videoInfo.pendingAudioStream = audioStream.slice(lastDtsChangeAudioOffset, audioStream.tell());
             
@@ -169,7 +169,7 @@
                 return null;
             }
             
-            samples.length = lastDtsChangeSample;
+            samples.length = lastDtsChangeSample - 1;
             stream.seek(lastDtsChangeOffset);
             audioStream.seek(lastDtsChangeAudioOffset);
         }
