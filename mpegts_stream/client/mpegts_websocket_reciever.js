@@ -3,6 +3,7 @@
 var MpegtsWebsocketReciever = (function MpegtsWebsocketRecieverClosure() {
     function MpegtsWebsocketReciever(url, segmenter) {
         this._isSocketInitialized = false;
+        this._isClosed = false;
         this._newDataCallback = null;
         this._websocket = new WebSocket(url);
         this._segmenter = segmenter;
@@ -30,8 +31,12 @@ var MpegtsWebsocketReciever = (function MpegtsWebsocketRecieverClosure() {
                 message[5] !== 'j'.charCodeAt() ||
                 message[6] !== 's'.charCodeAt()) {
                 
-                alert('Wrong websocket protocol');
-                this._websocket.close();
+                if (!this._isClosed) {
+                    alert('Wrong websocket protocol');
+                    this._websocket.close();
+                    this._isClosed = true;
+                }
+                
                 return;
             }
             
@@ -52,7 +57,11 @@ var MpegtsWebsocketReciever = (function MpegtsWebsocketRecieverClosure() {
     MpegtsWebsocketReciever.prototype._onBeforeUnload = function onBeforeUnload() {
         if (this._isSocketInitialized) {
             this._isSocketInitialized = false;
-            this._websocket.close();
+            
+            if (!this._isClosed) {
+                this._websocket.close();
+                this._isClosed = true;
+            }
         }
     };
     

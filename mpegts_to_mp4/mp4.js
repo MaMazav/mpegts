@@ -188,10 +188,20 @@
 		free: 'BoxHeader',
 
 		RawData: {
-			_rawData: ['blob', function () { return this.binary.getContext('_end')._end - this.binary.tell() }]
+			_rawData: ['blob', function () {
+                return this.binary.getContext('_end')._end - this.binary.tell();
+            }]
 		},
 
-		mdat: ['extend', 'BoxHeader', 'RawData'],
+		mdat: ['extend', 'BoxHeader', jBinary.Template({
+            baseType: 'RawData',
+            write: function(value) {
+                jBinary.hookRawDataOffsets = jBinary.hookRawDataOffsets || [];
+                jBinary.hookRawDataOffsets.push(this.binary.tell());
+                
+                this.baseWrite(value);
+            }
+        })],
 
 		ParamSets: jBinary.Template({
 			setParams: function (numType) {
@@ -227,7 +237,23 @@
 
 		moov: 'MultiBox',
         
-        moof: 'MultiBox',
+        moof: jBinary.Template({
+            baseType: 'MultiBox',
+            write: function(value) {
+                var self = this;
+                this.binary.inContext(this, function() {
+                    var context = this.getContext();
+                    context.moofOffsets = [];
+                    context.moofOffsets.moofStart = this.view.tell();
+                    delete context.currentTrackId;
+                    
+                    self.baseWrite(value);
+                    
+                    jBinary.hookMoofOffsets = jBinary.hookMoofOffsets || [];
+                    jBinary.hookMoofOffsets.push(context.moofOffsets);
+                });
+            }
+        }),
 
 		mvhd: ['extend', 'DurationBox', {
 			rate: 'Rate',
@@ -260,7 +286,14 @@
 		}],
         
         tfhd: ['extend', 'FullBox', {
-            track_ID: 'uint32',
+            track_ID: jBinary.Template({
+                baseType: 'uint32',
+                write: function(value) {
+                    var moof = this.binary.getContext('moofOffsets');
+                    moof.currentTrackId = value;
+                    this.baseWrite(value);
+                }
+            }),
             base_data_offset: ['if', function () { 
                     return this.binary.getContext('flags').flags & 0x1;
                 }, 'int64'],
@@ -285,9 +318,21 @@
         trun: ['extend', 'FullBox', {
             // TODO: Those fields are optional!
             sample_count: 'uint32',
-            data_offset: ['if', function () { 
+            data_offset: ['if', function () {
                     return this.binary.getContext('flags').flags & 0x1;
-                }, 'int32'],
+                }, jBinary.Template({
+                    baseType: 'int32',
+                    write: function(value) {
+                        var self = this;
+                        this.binary.inContext(this, function() {
+                            var trunContext = this.getContext();
+                            var moof = this.getContext('moofOffsets');
+                            moof.moofOffsets[moof.currentTrackId] = this.view.tell();
+                            
+                            self.baseWrite(value);
+                        });
+                    }
+                })],
             first_sample_flags: ['if', function () {
                     return this.binary.getContext('flags').flags & 0x4;
                 }, 'uint32'],

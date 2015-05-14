@@ -473,13 +473,14 @@
             var fragment_duration = duration;
             duration = 0;
             
+            var HAS_DATA_OFFSET = 0x001;
             var HAS_DURATION = 0x100;
             var HAS_SIZE = 0x200;
             var HAS_FLAGS = 0x400;
             var HAS_PRESENTATION_DECODE_DIFF = 0x800;
-            var trunSamplesFlags = HAS_SIZE | HAS_FLAGS | HAS_PRESENTATION_DECODE_DIFF;
+            var trunFlags = HAS_DATA_OFFSET | HAS_SIZE | HAS_FLAGS | HAS_PRESENTATION_DECODE_DIFF;
             if (!dtsDiffsSame) {
-                trunSamplesFlags |= HAS_DURATION;
+                trunFlags |= HAS_DURATION;
             }
             
             var trunSamples = new Array(samples.length - 1);
@@ -516,7 +517,8 @@
                             //    }
                             //}],
                             trun: [{
-                                flags: trunSamplesFlags,
+                                data_offset: 0, // Placeholder only
+                                flags: trunFlags,
                                 sample_count: trunSamples.length,
                                 samples_array: trunSamples
                             }]
@@ -744,6 +746,30 @@
 		}
         
 		mp4.write('File', mp4File);
+        
+        if (isLiveStream) {
+            if (!jBinary.hookMoofOffsets || jBinary.hookMoofOffsets.length > 1) {
+                throw 'Unexpected hookMoofOffsets count. Expected 1';
+            }
+            
+            if (!jBinary.hookRawDataOffsets || jBinary.hookRawDataOffsets.length > 1) {
+                throw 'Unexpected hookRawDataOffsets count. Expected 1';
+            }
+            
+            var moofOffsets = jBinary.hookMoofOffsets[0];
+            var rawDataOffset = jBinary.hookRawDataOffsets[0];
+            delete jBinary.hookMoofOffsets;
+            delete jBinary.hookRawDataOffsets;
+            
+            if (moofOffsets.length !== 2 || moofOffsets[0] || !moofOffsets[1]) {
+                throw 'Expected only offset for track ID 1 in moofOffsets. Audio is not supported';
+            }
+            
+            mp4.seek(moofOffsets[1], function() {
+                var dataOffset = rawDataOffset - moofOffsets.moofStart;
+                this.write('int32', dataOffset);
+            });
+        }
 		
 		return mp4.slice(0, mp4.tell());
 	};
