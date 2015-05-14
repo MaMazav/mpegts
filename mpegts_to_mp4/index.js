@@ -504,7 +504,8 @@
             		traf: [{
             			atoms: {
             				tfhd: [{
-            					flags: 0x20000, // NOTE: I don't know what it means, this bit not mentioned in standard
+            					//flags: 0x20000, // NOTE: I don't know what it means, this bit not mentioned in standard
+                                flags: 0x0000,
             					track_ID: 1
             				}],
                             // NOTE: may be added for optimization

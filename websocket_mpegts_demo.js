@@ -7,8 +7,8 @@ var websocketReciever = new MpegtsWebsocketReciever('ws://localhost:8087', segme
 
 var combo = document.getElementById('fragmentSelect');
 var video = document.getElementById('demoVideo');
-//var appender = new MediaSourceVideoBufferAppender(video);
-var appender = new StreamVideoBufferAppender(video);
+var appender = new MediaSourceVideoBufferAppender(video);
+//var appender = new StreamVideoBufferAppender(video);
 
 var isWaitingForSegment = false;
 var streamContext = {};

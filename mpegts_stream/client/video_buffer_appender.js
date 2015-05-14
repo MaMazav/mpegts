@@ -111,7 +111,8 @@ var MediaSourceVideoBufferAppender = (function MediaSourceVideoBufferAppenderClo
             this._sourceBuffer = null;
         }
         
-        this._sourceBuffer = this._mediaSource.addSourceBuffer('video/mp4; codecs="avc1.64001E, mp4a.40.2"');
+        this._sourceBuffer = this._mediaSource.addSourceBuffer('video/mp4; codecs="avc1.640029"');
+        //this._sourceBuffer = this._mediaSource.addSourceBuffer('video/mp4; codecs="avc1.64001E"');
         //this._sourceBuffer = this._mediaSource.addSourceBuffer('video/mp4');
         //this._sourceBuffer = this._mediaSource.addSourceBuffer('video/webm; codecs="vp8, vorbis"');
 
