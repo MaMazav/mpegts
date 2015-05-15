@@ -104,9 +104,10 @@
 					switch (nalUnit[0] & 0x1F) {
 						case 7:
 							if (!videoInfo.pendingSpsData) {
+                                var nalUnitWithoutNalType = nalUnit.subarray(1);
                                 var spsData = {
                                     sps : nalUnit,
-                                    spsInfo : new jBinary(nalUnit, H264).read('SPS')
+                                    spsInfo : new jBinary(nalUnitWithoutNalType, H264).read('SPS')
                                 };
                                 spsData.width = (spsData.spsInfo.pic_width_in_mbs_minus_1 + 1) * 16,
                                 spsData.height =
