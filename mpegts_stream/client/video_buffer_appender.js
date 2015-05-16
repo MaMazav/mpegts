@@ -41,7 +41,7 @@ var VideoBufferAppender = (function VideoBufferAppenderClosure() {
         }
     };
     
-    VideoBufferAppender.prototype.clear = function clear() {
+    VideoBufferAppender.prototype.clear = function clear(videoCodec) {
         throw 'clear was not implemented';
     };
 
@@ -69,6 +69,8 @@ var MediaSourceVideoBufferAppender = (function MediaSourceVideoBufferAppenderClo
             return;
         }
 
+        this._isMediaSourceOpened = false;
+        this._codecs = null;
         this._sourceBuffer = null;
         this._mediaSource = new MediaSource();
 
@@ -88,13 +90,16 @@ var MediaSourceVideoBufferAppender = (function MediaSourceVideoBufferAppenderClo
     MediaSourceVideoBufferAppender.prototype = Object.create(VideoBufferAppender.prototype);
     
     MediaSourceVideoBufferAppender.prototype._mediaSourceOpen = function sourceOpen(e) {
-        if (this._sourceBuffer !== null) {
+        if (this._isMediaSourceOpened) {
             return;
         }
         
-        this.clear();
-
-        this._appendBuffers();
+        this._isMediaSourceOpened = true;
+        
+        if (this._codecs) {
+            this._setSourceBuffer();
+            this._appendBuffers();
+        }
     };
     
     MediaSourceVideoBufferAppender.prototype._isReady = function isReady() {
@@ -105,13 +110,22 @@ var MediaSourceVideoBufferAppender = (function MediaSourceVideoBufferAppenderClo
         this._sourceBuffer.appendBuffer(uint8Array);
     };
     
-    MediaSourceVideoBufferAppender.prototype.clear = function clear() {
+    MediaSourceVideoBufferAppender.prototype.clear = function clear(codecs) {
+        this._codecs = codecs;
+        
         if (this._sourceBuffer !== null) {
             this._mediaSource.removeSourceBuffer(this._sourceBuffer);
             this._sourceBuffer = null;
         }
         
-        this._sourceBuffer = this._mediaSource.addSourceBuffer('video/mp4; codecs="avc1.640029"');
+        if (this._isMediaSourceOpened) {
+            this._setSourceBuffer();
+        }
+    };
+    
+    MediaSourceVideoBufferAppender.prototype._setSourceBuffer = function setSourceBuffer() {
+        this._sourceBuffer = this._mediaSource.addSourceBuffer('video/mp4; codecs="' + this._codecs + '"');
+        //this._sourceBuffer = this._mediaSource.addSourceBuffer('video/mp4; codecs="avc1.640029"');
         //this._sourceBuffer = this._mediaSource.addSourceBuffer('video/mp4; codecs="avc1.64001E"');
         //this._sourceBuffer = this._mediaSource.addSourceBuffer('video/mp4');
         //this._sourceBuffer = this._mediaSource.addSourceBuffer('video/webm; codecs="vp8, vorbis"');
@@ -151,7 +165,7 @@ var StreamVideoBufferAppender = (function StreamVideoBufferAppender() {
         this._videoElement.appendChild(source);
     };
     
-    StreamVideoBufferAppender.prototype.clear = function clear() {
+    StreamVideoBufferAppender.prototype.clear = function clear(videoCodec) {
         while (this._videoElement.childNodes.length > 0) {
             this._videoElement.removeChild(this._videoElement.childNodes[i]);
         }

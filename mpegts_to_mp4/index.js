@@ -143,6 +143,11 @@
         videoInfo.spsData = videoInfo.spsData || videoInfo.oldSpsData || videoInfo.pendingSpsData;
         videoInfo.pps = videoInfo.pps || videoInfo.oldPps || videoInfo.pendingPps;
         
+        var profileCompatibility;
+        if (videoInfo.spsData) {
+            profileCompatibility = parseInt(videoInfo.spsData.spsInfo.constraint_set_flags.join(''), 2);
+        }
+
         if (isLiveStream) {
             var isEnoughData = dtsChangesCount >= LIVE_MIN_FRAGMENT_SAMPLES && videoInfo.spsData && videoInfo.pps;
             if (isEnoughData) {
@@ -169,6 +174,12 @@
             if (!isEnoughData) {
                 return null;
             }
+            
+            videoInfo.videoCodec =
+                'avc1.' +
+                ('0' + videoInfo.spsData.spsInfo.profile_idc.toString(16)).slice(-2) +
+                ('0' + profileCompatibility.toString(16)).slice(-2) +
+                ('0' + videoInfo.spsData.spsInfo.level_idc.toString(16)).slice(-2);
             
             samples.length = lastDtsChangeSample - 1;
             stream.seek(lastDtsChangeOffset);
@@ -266,7 +277,7 @@
             sample_count: audioSizes.length,
             sample_delta: Math.round(duration / audioSizes.length)
         }];
-
+        
 		// generating resulting MP4
 
 		var mp4 = new jBinary(stream.byteLength, MP4);
@@ -293,7 +304,7 @@
                         avcC: [{
                             version: 1,
                             profileIndication: videoInfo.spsData.spsInfo.profile_idc,
-                            profileCompatibility: parseInt(videoInfo.spsData.spsInfo.constraint_set_flags.join(''), 2),
+                            profileCompatibility: profileCompatibility,
                             levelIndication: videoInfo.spsData.spsInfo.level_idc,
                             lengthSizeMinusOne: 3,
                             seqParamSets: [videoInfo.spsData.sps],

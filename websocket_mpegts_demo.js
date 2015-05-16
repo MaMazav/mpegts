@@ -62,7 +62,7 @@ require(['jbinary', './mpegts_to_mp4/mpegts', './mpegts_to_mp4/index', './mpegts
                 var bytes = mp4.view.getBytes();
                 
                 if (streamContext.isFirstSegment) {
-                    appender.clear();
+                    appender.clear(streamContext.videoCodec);
                     lastInitSegment = mp4;
                 }
                 initSegmentPerFragment.push(lastInitSegment);
