@@ -10,6 +10,10 @@ var video = document.getElementById('demoVideo');
 var appender = new MediaSourceVideoBufferAppender(video);
 //var appender = new StreamVideoBufferAppender(video);
 
+video.addEventListener('error', function(e) {
+    console.log('Video error');
+});
+
 var isWaitingForSegment = false;
 var streamContext = {};
 var allBytes = [];

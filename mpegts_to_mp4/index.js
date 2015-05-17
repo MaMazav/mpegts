@@ -521,13 +521,10 @@
                                 flags: 0x0000,
             					track_ID: 1
             				}],
-                            // NOTE: may be added for optimization
-                            //tfdt: [{
-                            //    atoms: {
-                            //        version: 0,
-                            //        base_media_decode_time: ?
-                            //    }
-                            //}],
+                            tfdt: [{
+                                version: 0,
+                                base_media_decode_time: samples[0].dts,
+                            }],
                             trun: [{
                                 data_offset: 0, // Placeholder only
                                 flags: trunFlags,

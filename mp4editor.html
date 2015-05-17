@@ -1,0 +1,69 @@
+<html>
+ <head>
+  <title>MP4 Editor</title>
+ </head>
+ <body>
+  Source file:<input id='sourceFileTxt' type="text" value="facebook-paper.mp4"><br>
+  <input type="button" onclick="loadOnClick()" value="Load"><br>
+  <textarea id="textArea" rows="30" cols="80"></textarea> <br><br>
+  <input type="button" onclick="saveOnClick()" value="Save">
+
+  <script src="lib/require.js"></script>
+  <script type="application/javascript" src="http://eligrey.com/demos/FileSaver.js/FileSaver.js"></script>
+
+  <script>
+'use strict';
+      
+var sourceFileTxt = document.getElementById('sourceFileTxt');
+var textArea = document.getElementById('textArea');
+var length;
+var mdat = null;
+var loadOnClick;
+var saveOnClick;
+      
+require.config({
+	paths: {
+		jdataview: '//jdataview.github.io/dist/jdataview',
+		jbinary: '//jdataview.github.io/dist/jbinary'
+	}
+});
+
+require(['jbinary', './mpegts_to_mp4/mp4.js'],
+	function (jBinary, MP4) {
+        loadOnClick = function() {
+            var sourceFile = sourceFileTxt.value;
+            jBinary.load(sourceFile, MP4, function (err, mp4) {
+                if (err) {
+                    alert('error: ' + err);
+                    return;
+                }
+                
+                length = mp4.view.byteLength;
+
+                var mp4Object = mp4.read('File');
+                mdat = mp4Object.mdat;
+                mp4Object.mdat = {};
+
+                var mp4Json = JSON.stringify(mp4Object, null, 2);
+                textArea.textContent = mp4Json;
+            });
+        }
+        
+        saveOnClick = function() {
+            var mp4Json = textArea.value;
+            
+            var mp4Object = JSON.parse(mp4Json);
+            mp4Object.mdat = mdat;
+            mp4Object.sidx = mp4Object.sidx;
+            
+            var mp4 = new jBinary(length + 50000, MP4);
+            mp4.write('File', mp4Object);
+            
+            var bytes = mp4.view.getBytes(mp4.tell(), 0);
+            var blob = new Blob([bytes], { type: 'application/octet-binary' });
+            saveAs(blob, 'editted.mp4');
+        };
+});
+  </script>
+ </body>
+</html>

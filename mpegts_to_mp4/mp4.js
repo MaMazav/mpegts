@@ -178,12 +178,16 @@
 			timescale: 'uint32',
 			duration: 'FBUint'
 		}],
-
-		ftyp: ['extend', 'BoxHeader', {
+        
+        TypeBoxContent: {
 			major_brand: 'ShortName',
 			minor_version: 'uint32',
 			compatible_brands: ['array', 'ShortName', function () { return (this.binary.getContext(1)._end - this.binary.tell()) / 4 }]
-		}],
+		},
+
+		ftyp: ['extend', 'BoxHeader', 'TypeBoxContent'],
+        
+        styp: ['extend', 'BoxHeader', 'TypeBoxContent'],
 
 		free: 'BoxHeader',
 
@@ -214,10 +218,32 @@
 						return this.baseRead().paramSet;
 					},
 					write: function (paramSet) {
-						this.baseWrite({
-							length: paramSet.length,
-							paramSet: paramSet
-						});
+                        var length = paramSet.length;
+                        if (length) {
+                            this.baseWrite({
+                                length: length,
+                                paramSet: paramSet
+                            });
+                            
+                            return;
+                        }
+                        
+                        // For JSON stringifying bug
+                        
+                        length = 0;
+                        while (paramSet[length] !== undefined) {
+                            ++length;
+                        }
+                        
+                        var dynamicArrayToWrite = {
+                            length: length,
+                            paramSet: new Uint8Array(length)
+                        };
+                        for (var i = 0; i < length; ++i) {
+                            dynamicArrayToWrite.paramSet[i] = paramSet[i];
+                        }
+                        
+						this.baseWrite(dynamicArrayToWrite);
 					}
 				})];
 			}
@@ -372,17 +398,30 @@
             }, 'sample_count']
         }],
         
-        sidx: ['extend', 'FullBox', {
-            earliest_composition_time: ['FBVersionable', 'uint32', 'uint64'],
-            reference_count: 'uint16',
-            references: ['array', {
-                reference_type: 1,
-                reference_offset: 31,
-                subsegment_duration: 'uint32',
-                contains_rap: 1,
-                rap_delta_time: 31
-            }, 'reference_count']
-        }],
+        sidx: ['extend', 'FullBox', jBinary.Template({
+            baseType: {
+                reference_track_ID: 'uint32',
+                earliest_composition_time: ['FBVersionable', 'uint32', 'uint64'],
+                reference_count: jBinary.Template({
+                    baseType: 'uint16',
+                    read: function() {
+                        var result = this.baseRead();
+                        return result;
+                    }
+                }),
+                references: ['array', {
+                    reference_type: 1,
+                    reference_offset: 31,
+                    subsegment_duration: 'uint32',
+                    contains_rap: 1,
+                    rap_delta_time: 31
+                }, 'reference_count']
+            },
+            read: function() {
+                var result = this.baseRead();
+                return result;
+            }
+        })],
                 
 
 		tref: 'MultiBox',
