@@ -14,7 +14,7 @@
 }(this, function (jDataView, jBinary, MP4, H264, PES, ADTS) {
 	'use strict';
     
-    var LIVE_MIN_FRAGMENT_SAMPLES = 40;
+    var LIVE_MIN_FRAGMENT_SAMPLES = 172;
     var MAX_CONTAINER_OVERHEAD_BYTES = 50000;
 
 	return function (mpegts, liveStreamContext) {
@@ -143,6 +143,7 @@
         videoInfo.spsData = videoInfo.spsData || videoInfo.oldSpsData || videoInfo.pendingSpsData;
         videoInfo.pps = videoInfo.pps || videoInfo.oldPps || videoInfo.pendingPps;
         
+        var baseMediaDecodeTime;
         var profileCompatibility;
         if (videoInfo.spsData) {
             profileCompatibility = parseInt(videoInfo.spsData.spsInfo.constraint_set_flags.join(''), 2);
@@ -163,6 +164,8 @@
                 lastDtsChangeAudioOffset = 0;
             }
             
+            baseMediaDecodeTime = videoInfo.pendingBaseMediaDecodeTime || 0;
+
             videoInfo.pendingSamples = samples.slice(lastDtsChangeSample - 1);
             videoInfo.pendingStream = stream.slice(lastDtsChangeOffset, stream.tell());
             videoInfo.pendingAudioStream = audioStream.slice(lastDtsChangeAudioOffset, audioStream.tell());
@@ -175,6 +178,8 @@
                 return null;
             }
             
+            videoInfo.pendingBaseMediaDecodeTime = samples[0].dts;
+
             videoInfo.videoCodec =
                 'avc1.' +
                 ('0' + videoInfo.spsData.spsInfo.profile_idc.toString(16)).slice(-2) +
@@ -484,6 +489,7 @@
         } else {
             var fragment_duration = duration;
             duration = 0;
+            mvhd[0].duration = 0;
             
             var HAS_DATA_OFFSET = 0x001;
             var HAS_DURATION = 0x100;
@@ -512,7 +518,7 @@
             var moof = [{
             	atoms: {
             		mfhd: [{
-            			sequence_number: ++videoInfo.sequenceNumber
+            			sequence_number: 0
             		}],
             		traf: [{
             			atoms: {
@@ -523,7 +529,7 @@
             				}],
                             tfdt: [{
                                 version: 0,
-                                base_media_decode_time: samples[0].dts,
+                                base_media_decode_time: baseMediaDecodeTime,
                             }],
                             trun: [{
                                 data_offset: 0, // Placeholder only
@@ -554,10 +560,13 @@
                     mdat: mdat,
                     sidx: sidx
                 };
+                
+                moof[0].atoms.mfhd[0].sequence_number = ++videoInfo.sequenceNumber;
             } else {
                 videoInfo.isFirstSegment = true;
                 videoInfo.isCreatedInitializationSegment = true;
-            	videoInfo.sequenceNumber = 0;
+            	videoInfo.sequenceNumber = 1;
+                moof[0].atoms.mfhd[0].sequence_number = 1;
 
                 // For initialization segment according to BMFF
                 moov[0].atoms.mvhd = mvhd;
@@ -627,7 +636,7 @@
 						duration: duration,
 						layer: 0,
 						alternate_group: 0,
-						volume: 1,
+						volume: 0,
 						matrix: {
 							a: 1, b: 0, x: 0,
 							c: 0, d: 1, y: 0,
