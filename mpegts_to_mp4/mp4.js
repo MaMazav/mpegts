@@ -311,6 +311,19 @@
 			dimensions: ['Dimensions', 'Rate']
 		}],
         
+        sample_flags: {
+            _reversed: ['const', 6, -1],
+            sampleNotDependsOnOthers: 1,
+            sampleDependsOnOthers: 1,
+            otherSamplesNotDependOn: 1,
+            otherSamplesDependOn: 1,
+            notRedundancy: 1,
+            hasRedundancy: 1,
+            samplePaddingValue: 3,
+            isDifferenceSample: 1,
+            sampleDegradationPriority: 'uint16'
+        },
+        
         tfhd: ['extend', 'FullBox', {
             track_ID: jBinary.Template({
                 baseType: 'uint32',
@@ -334,7 +347,7 @@
                 }, 'int32'],
             default_sample_flags: ['if', function () { 
                     return this.binary.getContext('flags').flags & 0x20;
-                }, 'int32']
+                }, 'sample_flags']
         }],
         
         tfdt: ['extend', 'FullBox', {
@@ -361,7 +374,7 @@
                 })],
             first_sample_flags: ['if', function () {
                     return this.binary.getContext('flags').flags & 0x4;
-                }, 'uint32'],
+                }, 'sample_flags'],
             _reserved: function() {
                 var flags = this.binary.getContext('flags').flags;
                 var countReservedUints = (flags & 0x2) ? 1 : 0;
@@ -382,7 +395,7 @@
                     }, 'uint32'],
                 sample_flags: ['if', function () {
                         return this.binary.getContext('flags').flags & 0x400;
-                    }, 'uint32'],
+                    }, 'sample_flags'],
                 sample_composition_time_offset: ['if', function () {
                         return this.binary.getContext('flags').flags & 0x800;
                     }, 'uint32'],
@@ -759,7 +772,7 @@
             default_sample_description_index: 'uint32',
             default_sample_duration: 'uint32',
             default_sample_size: 'uint32',
-            default_sample_flags: 'uint32'
+            default_sample_flags: 'sample_flags'
         }],
 
 		mehd: ['extend', 'FullBox', {

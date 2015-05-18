@@ -507,34 +507,24 @@
                 trunFlags |= HAS_DURATION;
             }
             
-            var SAMPLE_IS_DIFFERENCE_SAMPLE = 0x10000;
-            var SAMPLE_OTHER_DEPENDED_ON = 0x400000;
-            var SAMPLE_DEPENDS_ON_OTHER = 0x1000000;
-            var SAMPLE_NOT_DEPENDS_ON_OTHER = 0x2000000;
-            
             var isFirstIDR = true;
             var trunSamples = new Array(samples.length - 1);
             for (var i = 0; i < samples.length - 1; ++i) {
-                var sampleFlag = 0;
-                
-                if (i >= lastIDR || isFirstIDR) {
-                    sampleFlag |= SAMPLE_OTHER_DEPENDED_ON;
-                }
-                
-                if (samples[i].isIDR) {
-                    sampleFlag |= SAMPLE_NOT_DEPENDS_ON_OTHER;
-                    isFirstIDR = false;
-                }
-                else {
-                    sampleFlag |= SAMPLE_IS_DIFFERENCE_SAMPLE | SAMPLE_DEPENDS_ON_OTHER;
-                }
-                
                 trunSamples[i] = {
                     sample_duration: dtsDiffs[i].sample_delta,
                     sample_size: sizes[i],
-                    sample_flags: sampleFlag,
+                    sample_flags: {
+                        sampleNotDependsOnOthers: samples[i].isIDR,
+                        sampleDependsOnOthers: !samples[i].isIDR,
+                        otherSamplesDependOn: i >= lastIDR || isFirstIDR || samples[i].isIDR,
+                        isDifferenceSample: !samples[i].isIDR,
+                    },
                     sample_composition_time_offset: pts_dts_Diffs[i].sample_offset
                 };
+                
+                if (samples[i].isIDR) {
+                    isFirstIDR = true;
+                }
             }
             
             if (audioSize > 0) {
