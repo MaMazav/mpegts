@@ -1,6 +1,7 @@
 'use strict';
 
 var saveToFile;
+var addInitAndSaveToFile;
 
 var segmenter = new MpegtsSimpleSegmenter();
 var websocketReciever = new MpegtsWebsocketReciever('ws://localhost:8087', segmenter);
@@ -102,11 +103,27 @@ require(['jbinary', './mpegts_to_mp4/mpegts', './mpegts_to_mp4/index', './mpegts
     
         saveToFile = function saveToFile() {
             var selected = combo.value;
-
+            
             if (selected === 'all') {
                 var blob = new Blob(allBytes, { type: 'application/octet-binary' });
                 saveAs(blob, 'live_video.mp4');
 
+                return;
+            }
+            
+            var mp4 = allMp4s[selected - 1];
+            var length = mp4.view.tell();
+            var bytes = mp4.view.getBytes(mp4.view.tell(), 0);
+            
+            var blob = new Blob([bytes], { type: 'application/octet-binary' });
+            saveAs(blob, 'live_video_fragment_' + selected + '.m4s');
+        };
+    
+        addInitAndSaveToFile = function addInitAndSaveToFile() {
+            var selected = combo.value;
+
+            if (selected === 'all') {
+                saveToFile();
                 return;
             }
 

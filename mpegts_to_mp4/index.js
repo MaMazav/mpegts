@@ -14,7 +14,7 @@
 }(this, function (jDataView, jBinary, MP4, H264, PES, ADTS) {
 	'use strict';
     
-    var LIVE_MIN_FRAGMENT_SAMPLES = 172;
+    var LIVE_MIN_FRAGMENT_SAMPLES = 20;
     var MAX_CONTAINER_OVERHEAD_BYTES = 50000;
 
 	return function (mpegts, liveStreamContext) {
@@ -57,6 +57,7 @@
         
         videoInfo.spsData = null;
         videoInfo.pps = null;
+        videoInfo.lastIDR = videoInfo.lastIDR || 0;
 
         var pendingStreamLength = (videoInfo.pendingStream || {}).byteLength || 0;
 		stream = new jDataView(stream.byteLength + pendingStreamLength + MAX_CONTAINER_OVERHEAD_BYTES);
@@ -128,8 +129,9 @@
 								videoInfo.pendingPps = nalUnit;
 							}
 							break;
-
+                            
 						case 5:
+                            videoInfo.lastIDR = samples.length;
 							curSample.isIDR = true;
 						/* falls through */
 						default:
@@ -149,10 +151,14 @@
             profileCompatibility = parseInt(videoInfo.spsData.spsInfo.constraint_set_flags.join(''), 2);
         }
 
+        var lastIDR;
+        
         if (isLiveStream) {
             var isEnoughData = dtsChangesCount >= LIVE_MIN_FRAGMENT_SAMPLES && videoInfo.spsData && videoInfo.pps;
             if (isEnoughData) {
                 videoInfo.pendingDtsChangesCount = 0;
+                lastIDR = videoInfo.lastIDR;
+                videoInfo.lastIDR = 0;
             } else {
                 videoInfo.pendingDtsChangesCount = dtsChangesCount;
                 
@@ -190,8 +196,8 @@
             stream.seek(lastDtsChangeOffset);
             audioStream.seek(lastDtsChangeAudioOffset);
         }
-		
-		samples.push({offset: stream.tell()});
+        
+        samples.push({offset: stream.tell()});
 
 		var sizes = [],
 			dtsDiffs = [],
@@ -501,12 +507,32 @@
                 trunFlags |= HAS_DURATION;
             }
             
+            var SAMPLE_IS_DIFFERENCE_SAMPLE = 0x10000;
+            var SAMPLE_OTHER_DEPENDED_ON = 0x400000;
+            var SAMPLE_DEPENDS_ON_OTHER = 0x1000000;
+            var SAMPLE_NOT_DEPENDS_ON_OTHER = 0x2000000;
+            
+            var isFirstIDR = true;
             var trunSamples = new Array(samples.length - 1);
             for (var i = 0; i < samples.length - 1; ++i) {
+                var sampleFlag = 0;
+                
+                if (i >= lastIDR || isFirstIDR) {
+                    sampleFlag |= SAMPLE_OTHER_DEPENDED_ON;
+                }
+                
+                if (samples[i].isIDR) {
+                    sampleFlag |= SAMPLE_NOT_DEPENDS_ON_OTHER;
+                    isFirstIDR = false;
+                }
+                else {
+                    sampleFlag |= SAMPLE_IS_DIFFERENCE_SAMPLE | SAMPLE_DEPENDS_ON_OTHER;
+                }
+                
                 trunSamples[i] = {
                     sample_duration: dtsDiffs[i].sample_delta,
                     sample_size: sizes[i],
-                    sample_flags: 0x10000, // NOTE: I don't know what it means, I think this is SampleIsDependedOnUnknown flag
+                    sample_flags: sampleFlag,
                     sample_composition_time_offset: pts_dts_Diffs[i].sample_offset
                 };
             }
@@ -523,8 +549,7 @@
             		traf: [{
             			atoms: {
             				tfhd: [{
-            					//flags: 0x20000, // NOTE: I don't know what it means, this bit not mentioned in standard
-                                flags: 0x0000,
+            					flags: 0x20000, // NOTE: I don't know what it means, this bit not mentioned in standard
             					track_ID: 1
             				}],
                             tfdt: [{
@@ -654,7 +679,7 @@
 								flags: 0,
 								timescale: 90000,
 								duration: duration,
-								lang: 'und'
+								lang: 'eng'
 							}],
 							hdlr: [{
 								version: 0,
