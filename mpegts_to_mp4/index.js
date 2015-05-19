@@ -83,9 +83,9 @@
 					pts = packet.pts,
 					dts = packet.dts,
 					curSample = {offset: stream.tell(), pts: pts, dts: dts !== undefined ? dts : pts};
-				
-				samples.push(curSample);
 
+				samples.push(curSample);
+                
                 if (dts !== samples[lastDtsChangeSample].dts) {
                     ++dtsChangesCount;
                     lastDtsChangeSample = samples.length;
@@ -184,7 +184,7 @@
                 return null;
             }
             
-            videoInfo.pendingBaseMediaDecodeTime = samples[0].dts;
+            videoInfo.pendingBaseMediaDecodeTime = samples[lastDtsChangeSample - 2].dts;
 
             videoInfo.videoCodec =
                 'avc1.' +
@@ -517,7 +517,7 @@
                         sampleNotDependsOnOthers: samples[i].isIDR,
                         sampleDependsOnOthers: !samples[i].isIDR,
                         otherSamplesDependOn: i >= lastIDR || isFirstIDR || samples[i].isIDR,
-                        isDifferenceSample: !samples[i].isIDR,
+                        isDifferenceSample: !samples[i].isIDR
                     },
                     sample_composition_time_offset: pts_dts_Diffs[i].sample_offset
                 };
