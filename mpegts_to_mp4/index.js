@@ -145,7 +145,6 @@
         videoInfo.spsData = videoInfo.spsData || videoInfo.oldSpsData || videoInfo.pendingSpsData;
         videoInfo.pps = videoInfo.pps || videoInfo.oldPps || videoInfo.pendingPps;
         
-        var baseMediaDecodeTime;
         var profileCompatibility;
         if (videoInfo.spsData) {
             profileCompatibility = parseInt(videoInfo.spsData.spsInfo.constraint_set_flags.join(''), 2);
@@ -170,8 +169,6 @@
                 lastDtsChangeAudioOffset = 0;
             }
             
-            baseMediaDecodeTime = videoInfo.pendingBaseMediaDecodeTime || 0;
-
             videoInfo.pendingSamples = samples.slice(lastDtsChangeSample);
             videoInfo.pendingStream = stream.slice(lastDtsChangeOffset, stream.tell());
             videoInfo.pendingAudioStream = audioStream.slice(lastDtsChangeAudioOffset, audioStream.tell());
@@ -184,8 +181,6 @@
                 return null;
             }
             
-            videoInfo.pendingBaseMediaDecodeTime = samples[lastDtsChangeSample - 1].dts;
-
             videoInfo.videoCodec =
                 'avc1.' +
                 ('0' + videoInfo.spsData.spsInfo.profile_idc.toString(16)).slice(-2) +
@@ -195,6 +190,10 @@
             samples.length = lastDtsChangeSample;
             stream.seek(lastDtsChangeOffset);
             audioStream.seek(lastDtsChangeAudioOffset);
+            
+            if (videoInfo.startDts === undefined) {
+                videoInfo.startDts = samples[0].dts;
+            }
         }
         
         samples.push({offset: stream.tell()});
@@ -544,7 +543,7 @@
             				}],
                             tfdt: [{
                                 version: 0,
-                                base_media_decode_time: baseMediaDecodeTime,
+                                base_media_decode_time: samples[0].dts - videoInfo.startDts,
                             }],
                             trun: [{
                                 data_offset: 0, // Placeholder only
