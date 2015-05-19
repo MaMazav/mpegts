@@ -88,7 +88,7 @@
                 
                 if (dts !== samples[lastDtsChangeSample].dts) {
                     ++dtsChangesCount;
-                    lastDtsChangeSample = samples.length;
+                    lastDtsChangeSample = samples.length - 1;
                     lastDtsChangeOffset = stream.tell();
                     lastDtsChangeAudioOffset = audioStream.tell();
 
@@ -131,7 +131,7 @@
 							break;
                             
 						case 5:
-                            videoInfo.lastIDR = samples.length;
+                            videoInfo.lastIDR = samples.length - 1;
 							curSample.isIDR = true;
 						/* falls through */
 						default:
@@ -165,14 +165,14 @@
                 videoInfo.pendingSpsData = videoInfo.spsData || videoInfo.pendingSpsData;
                 videoInfo.pendingPps = videoInfo.pps || videoInfo.pendingPps;
                 
-                lastDtsChangeSample = 1;
+                lastDtsChangeSample = 0;
                 lastDtsChangeOffset = 0;
                 lastDtsChangeAudioOffset = 0;
             }
             
             baseMediaDecodeTime = videoInfo.pendingBaseMediaDecodeTime || 0;
 
-            videoInfo.pendingSamples = samples.slice(lastDtsChangeSample - 1);
+            videoInfo.pendingSamples = samples.slice(lastDtsChangeSample);
             videoInfo.pendingStream = stream.slice(lastDtsChangeOffset, stream.tell());
             videoInfo.pendingAudioStream = audioStream.slice(lastDtsChangeAudioOffset, audioStream.tell());
             
@@ -184,7 +184,7 @@
                 return null;
             }
             
-            videoInfo.pendingBaseMediaDecodeTime = samples[lastDtsChangeSample - 2].dts;
+            videoInfo.pendingBaseMediaDecodeTime = samples[lastDtsChangeSample - 1].dts;
 
             videoInfo.videoCodec =
                 'avc1.' +
@@ -192,7 +192,7 @@
                 ('0' + profileCompatibility.toString(16)).slice(-2) +
                 ('0' + videoInfo.spsData.spsInfo.level_idc.toString(16)).slice(-2);
             
-            samples.length = lastDtsChangeSample - 1;
+            samples.length = lastDtsChangeSample;
             stream.seek(lastDtsChangeOffset);
             audioStream.seek(lastDtsChangeAudioOffset);
         }
