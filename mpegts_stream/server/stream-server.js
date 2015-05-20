@@ -8,7 +8,9 @@ if( process.argv.length < 3 ) {
 }
 
 var STREAM_SECRET = process.argv[2],
-	STREAM_PORT = process.argv[3] || 8085,
+	UDP_STREAM_ADDRESS = '224.0.0.1',
+	UDP_STREAM_PORT = 6785,
+	HTTP_STREAM_PORT = process.argv[3] || 8085,
 	WEBSOCKET_PORT = process.argv[4] || 8087,
 	STREAM_MAGIC_BYTES = 'mpts.js'; // Must be 7 bytes
 
@@ -67,7 +69,16 @@ var streamServer = require('http').createServer( function(request, response) {
 		);
 		response.end();
 	}
-}).listen(STREAM_PORT);
+}).listen(HTTP_STREAM_PORT);
 
-console.log('Listening for MPEG Stream on http://127.0.0.1:'+STREAM_PORT+'/<secret>/<width>/<height>');
+var streamUdpListener = require('dgram').createSocket('udp4');
+
+streamUdpListener.on('message', function(data) {
+	socketServer.broadcast(data, {binary:true});
+});
+
+streamUdpListener.bind(UDP_STREAM_PORT, UDP_STREAM_ADDRESS);
+
+console.log('Listening for MPEG Stream on udp://' + UDP_STREAM_ADDRESS + ':'+UDP_STREAM_PORT+'/<secret>/<width>/<height>');
+console.log('Listening for MPEG Stream on http://127.0.0.1:'+HTTP_STREAM_PORT+'/<secret>/<width>/<height>');
 console.log('Awaiting WebSocket connections on ws://127.0.0.1:'+WEBSOCKET_PORT+'/');

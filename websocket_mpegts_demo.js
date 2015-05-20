@@ -58,11 +58,9 @@ require(['jbinary', './mpegts_to_mp4/mpegts', './mpegts_to_mp4/index', './mpegts
                 return;
             }
 
-            console.log('converting another chunk...');
             var mp4 = mpegts_to_mp4(mpegts, streamContext);
 
             if (mp4 !== null) {
-                console.log('converted');
 
                 var bytes = mp4.view.getBytes();
                 
@@ -92,8 +90,6 @@ require(['jbinary', './mpegts_to_mp4/mpegts', './mpegts_to_mp4/index', './mpegts
                 var jsonBlob = new Blob([JSON.stringify(mp4Object)], { type: 'text/json' });
                 saveAs(jsonBlob, 'serialized_video_' + (fileIndex++) + '.json');
                 //*/
-            } else {
-                console.log('not enough data to convert');
             }
             
             segmenter.getSegment(function(segmentBlob) {
