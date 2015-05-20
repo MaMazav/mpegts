@@ -179,7 +179,7 @@ function addInitAndSaveJsonToFile() {
         return;
     }
     
-    var jsonBlob = new Blob([JSON.stringify(segment.data)], { type: 'text/json' });
+    var jsonBlob = new Blob([JSON.stringify(segment.data, null, 2)], { type: 'text/json' });
     saveAs(jsonBlob, 'live_video_fragment_' + selected + '_with_init.json');
 }
 
@@ -201,7 +201,7 @@ function saveJsonToFile() {
         
         mp4.seek(0);
         var mp4Object = mp4.read('File');
-        bytes.push(JSON.stringify(mp4Object));
+        bytes.push(JSON.stringify(mp4Object, null, 2));
     }
     
     var jsonBlob = new Blob(bytes, { type: 'text/json' });

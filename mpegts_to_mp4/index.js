@@ -18,7 +18,7 @@
     var CUT_SEGMENT_AT_DTS_CHANGE = 2;
     var CUT_SEGMENT_AT_END_OF_CHUNK = 3;
     
-    var CUT_SEGMENT_AT = CUT_SEGMENT_AT_DTS_CHANGE;
+    var CUT_SEGMENT_AT = CUT_SEGMENT_AT_IDR;
     var LIVE_MIN_FRAGMENT_SAMPLES = 20;
     var MAX_CONTAINER_OVERHEAD_BYTES = 50000;
 
@@ -145,7 +145,6 @@
 							stream.writeBytes(nalUnit);
 					}
 				}
-                
                     
                 var isDtsChange = dts !== prevDts;
                 var isCutFragment =
@@ -195,14 +194,13 @@
         var anySpsData = fragmentToReturn.spsData || videoInfo.oldSpsData || videoInfo.pendingSegment.spsData;
         var anyPps = fragmentToReturn.pps || videoInfo.oldPps || videoInfo.pendingSegment.pps;
         
-        var baseMediaDecodeTime;
         var profileCompatibility;
         if (anySpsData) {
             profileCompatibility = parseInt(anySpsData.spsInfo.constraint_set_flags.join(''), 2);
         }
 
         if (isLiveStream) {
-            if (CUT_SEGMENT_AT === CUT_SEGMENT_AT_IDR) {
+            if (CUT_SEGMENT_AT === CUT_SEGMENT_AT_END_OF_CHUNK) {
                 addPendingSegmentToFragment();
             }
             
@@ -217,8 +215,6 @@
                 videoInfo.pendingSegment = fragmentToReturn;
             }
             
-            baseMediaDecodeTime = videoInfo.pendingBaseMediaDecodeTime || 0;
-
             videoInfo.pendingSamples = samples.slice(pendingSegmentStart);
             videoInfo.pendingStream = stream.slice(pendingSegmentOffset, stream.tell());
             videoInfo.pendingAudioStream = audioStream.slice(pendingSegmentAudioOffset, audioStream.tell());
@@ -226,15 +222,13 @@
             videoInfo.pendingSegment.lastIDR -= pendingSegmentStart;
             
             for (var i = 0; i < videoInfo.pendingSamples.length; ++i) {
-                videoInfo.pendingSamples[i].offset -= pendingSegmentStart;
+                videoInfo.pendingSamples[i].offset -= pendingSegmentOffset;
             }
             
             if (!isEnoughData) {
                 return null;
             }
             
-            videoInfo.pendingBaseMediaDecodeTime = samples[pendingSegmentStart - 1].dts;
-
             videoInfo.videoCodec =
                 'avc1.' +
                 ('0' + anySpsData.spsInfo.profile_idc.toString(16)).slice(-2) +
@@ -244,6 +238,10 @@
             samples.length = pendingSegmentStart;
             stream.seek(pendingSegmentOffset);
             audioStream.seek(pendingSegmentAudioOffset);
+            
+            if (videoInfo.startDts === undefined) {
+                videoInfo.startDts = samples[0].dts;
+            }
         }
         
         samples.push({offset: stream.tell()});
@@ -593,7 +591,7 @@
             				}],
                             tfdt: [{
                                 version: 0,
-                                base_media_decode_time: baseMediaDecodeTime,
+                                base_media_decode_time: samples[0].dts - videoInfo.startDts,
                             }],
                             trun: [{
                                 data_offset: 0, // Placeholder only
