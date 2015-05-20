@@ -14,6 +14,11 @@
 }(this, function (jDataView, jBinary, MP4, H264, PES, ADTS) {
 	'use strict';
     
+    var CUT_SEGMENT_AT_IDR = 1;
+    var CUT_SEGMENT_AT_DTS_CHANGE = 2;
+    var CUT_SEGMENT_AT_END_OF_CHUNK = 3;
+    
+    var CUT_SEGMENT_AT = CUT_SEGMENT_AT_DTS_CHANGE;
     var LIVE_MIN_FRAGMENT_SAMPLES = 20;
     var MAX_CONTAINER_OVERHEAD_BYTES = 50000;
 
@@ -34,6 +39,7 @@
         
         var isLiveStream = !!liveStreamContext;
         var videoInfo = liveStreamContext || {};
+        videoInfo.pendingSegment = videoInfo.pendingSegment || {};
 		
 		// extracting and concatenating raw stream parts
 		var stream = new jDataView(mpegts.view.byteLength);
@@ -46,18 +52,26 @@
 		
 		var pesStream = new jBinary(stream.slice(0, stream.tell()), PES),
 			samples = videoInfo.pendingSamples || [],
-            lastDtsChangeSample = 0,
-            lastDtsChangeOffset = 0,
-            lastDtsChangeAudioOffset = 0;
+            pendingSegmentStart = 0,
+            pendingSegmentOffset = 0,
+            pendingSegmentAudioOffset = 0,
+            lastIDR = videoInfo.pendingLastIDR || 0,
+            prevDts;
         
-        videoInfo.oldSpsData = videoInfo.spsData;
-        videoInfo.oldPps = videoInfo.pps;
-        var dtsChangesCount = videoInfo.pendingDtsChangesCount || 0;
-        videoInfo.pendingDtsChangesCount = 0;
+        videoInfo.oldSpsData = (videoInfo.pendingSegment.spsData || {}).spsData;
+        videoInfo.oldPps = (videoInfo.pendingSegment.pps || {}).pps;
         
-        videoInfo.spsData = null;
-        videoInfo.pps = null;
-        videoInfo.lastIDR = videoInfo.lastIDR || 0;
+        var fragmentToReturn = {
+            dtsChangesCount: 0,
+            spsData: null,
+            pps: null,
+            lastIDR: 0
+        };
+
+        videoInfo.pendingSegment.dtsChangesCount = videoInfo.pendingSegment.dtsChangesCount || 0;
+        videoInfo.pendingSegment.pps = videoInfo.pendingSegment.pps || null;
+        videoInfo.pendingSegment.spsData = videoInfo.pendingSegment.spsData || null;
+        videoInfo.pendingSegment.lastIDR = videoInfo.pendingSegment.lastIDR || 0;
 
         var pendingStreamLength = (videoInfo.pendingStream || {}).byteLength || 0;
 		stream = new jDataView(stream.byteLength + pendingStreamLength + MAX_CONTAINER_OVERHEAD_BYTES);
@@ -86,25 +100,18 @@
 
 				samples.push(curSample);
                 
-                if (dts !== samples[lastDtsChangeSample].dts) {
-                    ++dtsChangesCount;
-                    lastDtsChangeSample = samples.length - 1;
-                    lastDtsChangeOffset = stream.tell();
-                    lastDtsChangeAudioOffset = audioStream.tell();
-
-                    videoInfo.spsData = videoInfo.spsData || videoInfo.pendingSpsData;
-                    videoInfo.pps = videoInfo.pps  || videoInfo.pendingPps;
-
-                    videoInfo.pendingSpsData = null;
-                    videoInfo.pendingPps = null;
-                }
+                var streamOffset = stream.tell();
+                var audioStreamOffset = audioStream.tell();
+                
+                var currentSampleSpsData = null;
+                var currentSamplePps = null;
 				
 				// collecting info from H.264 NAL units
 				while (nalStream.tell() < nalStream.view.byteLength) {
 					var nalUnit = nalStream.read('NALUnit');
 					switch (nalUnit[0] & 0x1F) {
 						case 7:
-							if (!videoInfo.pendingSpsData) {
+							if (!currentSampleSpsData) {
                                 var nalUnitWithoutNalType = nalUnit.subarray(1);
                                 var spsData = {
                                     sps : nalUnit,
@@ -120,18 +127,17 @@
 									spsData.spsInfo.height -= 2 * (cropping.top + cropping.bottom);
 								}
                                 
-                                videoInfo.pendingSpsData = spsData;
+                                currentSampleSpsData = spsData;
 							}
 							break;
 
 						case 8:
-							if (!videoInfo.pendingPps) {
-								videoInfo.pendingPps = nalUnit;
+							if (!currentSamplePps) {
+                                currentSamplePps = nalUnit;
 							}
 							break;
                             
 						case 5:
-                            videoInfo.lastIDR = samples.length - 1;
 							curSample.isIDR = true;
 						/* falls through */
 						default:
@@ -139,62 +145,105 @@
 							stream.writeBytes(nalUnit);
 					}
 				}
+                
+                    
+                var isDtsChange = dts !== prevDts;
+                var isCutFragment =
+                    CUT_SEGMENT_AT === CUT_SEGMENT_AT_IDR ? curSample.isIDR :
+                    CUT_SEGMENT_AT === CUT_SEGMENT_AT_DTS_CHANGE ? isDtsChange :
+                    false;
+                
+                if (isCutFragment) {
+                    addPendingSegmentToFragment();
+                }
+                
+                if (isDtsChange) {
+                    ++videoInfo.pendingSegment.dtsChangesCount;
+                }
+                
+                if (curSample.isIDR) {
+                    videoInfo.pendingSegment.lastIDR = samples.length - 1;
+                }
+            
+                videoInfo.pendingSegment.spsData = videoInfo.pendingSegment.spsData || currentSampleSpsData;
+                videoInfo.pendingSegment.pps = videoInfo.pendingSegment.pps || currentSamplePps;
+                
+                if (dts !== undefined) {
+                    prevDts = dts;
+                }
 			}
 		}
         
-        videoInfo.spsData = videoInfo.spsData || videoInfo.oldSpsData || videoInfo.pendingSpsData;
-        videoInfo.pps = videoInfo.pps || videoInfo.oldPps || videoInfo.pendingPps;
+        function addPendingSegmentToFragment() {
+            fragmentToReturn.dtsChangesCount += videoInfo.pendingSegment.dtsChangesCount;
+            fragmentToReturn.spsData = fragmentToReturn.spsData || videoInfo.pendingSegment.spsData;
+            fragmentToReturn.pps = fragmentToReturn.pps || videoInfo.pendingSegment.pps;
+            fragmentToReturn.lastIDR = videoInfo.pendingSegment.lastIDR || fragmentToReturn.lastIDR;
+
+            pendingSegmentStart = samples.length - 1;
+            pendingSegmentOffset = streamOffset;
+            pendingSegmentAudioOffset = audioStreamOffset;
+                    
+            videoInfo.pendingSegment = {
+                dtsChangesCount: 0,
+                spsData: null,
+                pps: null,
+                lastIDR: 0
+            };
+        }
+        
+        var anySpsData = fragmentToReturn.spsData || videoInfo.oldSpsData || videoInfo.pendingSegment.spsData;
+        var anyPps = fragmentToReturn.pps || videoInfo.oldPps || videoInfo.pendingSegment.pps;
         
         var baseMediaDecodeTime;
         var profileCompatibility;
-        if (videoInfo.spsData) {
-            profileCompatibility = parseInt(videoInfo.spsData.spsInfo.constraint_set_flags.join(''), 2);
+        if (anySpsData) {
+            profileCompatibility = parseInt(anySpsData.spsInfo.constraint_set_flags.join(''), 2);
         }
 
-        var lastIDR;
-        
         if (isLiveStream) {
-            var isEnoughData = dtsChangesCount >= LIVE_MIN_FRAGMENT_SAMPLES && videoInfo.spsData && videoInfo.pps;
-            if (isEnoughData) {
-                videoInfo.pendingDtsChangesCount = 0;
-                lastIDR = videoInfo.lastIDR;
-                videoInfo.lastIDR = 0;
-            } else {
-                videoInfo.pendingDtsChangesCount = dtsChangesCount;
+            if (CUT_SEGMENT_AT === CUT_SEGMENT_AT_IDR) {
+                addPendingSegmentToFragment();
+            }
+            
+            var isEnoughData = fragmentToReturn.dtsChangesCount >= LIVE_MIN_FRAGMENT_SAMPLES && anySpsData && anyPps;
+            if (!isEnoughData) {
+                addPendingSegmentToFragment();
                 
-                videoInfo.pendingSpsData = videoInfo.spsData || videoInfo.pendingSpsData;
-                videoInfo.pendingPps = videoInfo.pps || videoInfo.pendingPps;
+                pendingSegmentStart = 0;
+                pendingSegmentOffset = 0;
+                pendingSegmentAudioOffset = 0;
                 
-                lastDtsChangeSample = 0;
-                lastDtsChangeOffset = 0;
-                lastDtsChangeAudioOffset = 0;
+                videoInfo.pendingSegment = fragmentToReturn;
             }
             
             baseMediaDecodeTime = videoInfo.pendingBaseMediaDecodeTime || 0;
 
-            videoInfo.pendingSamples = samples.slice(lastDtsChangeSample);
-            videoInfo.pendingStream = stream.slice(lastDtsChangeOffset, stream.tell());
-            videoInfo.pendingAudioStream = audioStream.slice(lastDtsChangeAudioOffset, audioStream.tell());
+            videoInfo.pendingSamples = samples.slice(pendingSegmentStart);
+            videoInfo.pendingStream = stream.slice(pendingSegmentOffset, stream.tell());
+            videoInfo.pendingAudioStream = audioStream.slice(pendingSegmentAudioOffset, audioStream.tell());
+            
+            videoInfo.pendingSegment.lastIDR -= pendingSegmentStart;
             
             for (var i = 0; i < videoInfo.pendingSamples.length; ++i) {
-                videoInfo.pendingSamples[i].offset -= lastDtsChangeOffset;
+                videoInfo.pendingSamples[i].offset -= pendingSegmentStart;
             }
             
             if (!isEnoughData) {
                 return null;
             }
             
-            videoInfo.pendingBaseMediaDecodeTime = samples[lastDtsChangeSample - 1].dts;
+            videoInfo.pendingBaseMediaDecodeTime = samples[pendingSegmentStart - 1].dts;
 
             videoInfo.videoCodec =
                 'avc1.' +
-                ('0' + videoInfo.spsData.spsInfo.profile_idc.toString(16)).slice(-2) +
+                ('0' + anySpsData.spsInfo.profile_idc.toString(16)).slice(-2) +
                 ('0' + profileCompatibility.toString(16)).slice(-2) +
-                ('0' + videoInfo.spsData.spsInfo.level_idc.toString(16)).slice(-2);
+                ('0' + anySpsData.spsInfo.level_idc.toString(16)).slice(-2);
             
-            samples.length = lastDtsChangeSample;
-            stream.seek(lastDtsChangeOffset);
-            audioStream.seek(lastDtsChangeAudioOffset);
+            samples.length = pendingSegmentStart;
+            stream.seek(pendingSegmentOffset);
+            audioStream.seek(pendingSegmentAudioOffset);
         }
         
         samples.push({offset: stream.tell()});
@@ -301,8 +350,8 @@
                     type: 'avc1',
                     data_reference_index: 1,
                     dimensions: {
-                        horz: videoInfo.spsData.width,
-                        vert: videoInfo.spsData.height
+                        horz: anySpsData.width,
+                        vert: anySpsData.height
                     },
                     resolution: {
                         horz: 72,
@@ -314,12 +363,12 @@
                     atoms: {
                         avcC: [{
                             version: 1,
-                            profileIndication: videoInfo.spsData.spsInfo.profile_idc,
+                            profileIndication: anySpsData.spsInfo.profile_idc,
                             profileCompatibility: profileCompatibility,
-                            levelIndication: videoInfo.spsData.spsInfo.level_idc,
+                            levelIndication: anySpsData.spsInfo.level_idc,
                             lengthSizeMinusOne: 3,
-                            seqParamSets: [videoInfo.spsData.sps],
-                            pictParamSets: [videoInfo.pps]
+                            seqParamSets: [anySpsData.sps],
+                            pictParamSets: [anyPps]
                         }]
                     }
                 }]
@@ -516,7 +565,7 @@
                     sample_flags: {
                         sampleNotDependsOnOthers: samples[i].isIDR,
                         sampleDependsOnOthers: !samples[i].isIDR,
-                        otherSamplesDependOn: i >= lastIDR || isFirstIDR || samples[i].isIDR,
+                        otherSamplesDependOn: i >= fragmentToReturn.lastIDR || isFirstIDR || samples[i].isIDR,
                         isDifferenceSample: !samples[i].isIDR
                     },
                     sample_composition_time_offset: pts_dts_Diffs[i].sample_offset
@@ -658,8 +707,8 @@
 							u: 0, v: 0, w: 1
 						},
 						dimensions: {
-							horz: videoInfo.spsData.width,
-							vert: videoInfo.spsData.height
+							horz: anySpsData.width,
+							vert: anySpsData.height
 						}
 					}],
 					mdia: [{
