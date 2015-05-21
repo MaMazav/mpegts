@@ -19,7 +19,7 @@
     var CUT_SEGMENT_AT_END_OF_CHUNK = 3;
     
     var CUT_SEGMENT_AT = CUT_SEGMENT_AT_IDR;
-    var LIVE_MIN_FRAGMENT_SAMPLES = 20;
+    var LIVE_MIN_FRAGMENT_SAMPLES = 1;
     var MAX_CONTAINER_OVERHEAD_BYTES = 50000;
 
 	return function (mpegts, liveStreamContext) {
@@ -204,7 +204,7 @@
                 addPendingSegmentToFragment();
             }
             
-            var isEnoughData = fragmentToReturn.dtsChangesCount >= LIVE_MIN_FRAGMENT_SAMPLES && anySpsData && anyPps;
+            var isEnoughData = fragmentToReturn.dtsChangesCount >= LIVE_MIN_FRAGMENT_SAMPLES && !!anySpsData && !!anyPps;
             if (!isEnoughData) {
                 addPendingSegmentToFragment();
                 
